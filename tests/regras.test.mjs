@@ -100,3 +100,15 @@ test('coleções não previstas ficam fechadas até para ADMIN', async () => {
   await assertFails(getDoc(doc(db, 'outra', 'a')));
   await assertFails(setDoc(doc(db, 'outra', 'b'), { x: 1 }));
 });
+
+test('Central de Lotes: leitura por perfil autorizado, ninguém grava ou apaga pelo navegador', async () => {
+  for (const uid of ['admin', 'qual', 'visu', 'tsi']) {
+    const db = como(uid);
+    await assertSucceeds(getDocs(collection(db, 'lots')));
+    await assertFails(setDoc(doc(db, 'lots', 'SOJA2526_NOVO'), { lote: 'NOVO' }));
+    await assertFails(updateDoc(doc(db, 'lots', 'SOJA2526_X1'), { situacao: 'PRONTO' }));
+    await assertFails(deleteDoc(doc(db, 'lots', 'SOJA2526_X1')));
+  }
+  await assertFails(getDocs(collection(como(null), 'lots')));
+  await assertFails(getDocs(collection(como('inativo'), 'lots')));
+});
