@@ -1,0 +1,10 @@
+# NUNCA versionar dados nem credenciais
+banco-local/
+*.json.key
+service-account*.json
+firebase-adminsdk*.json
+resumo_email.html
+erro_email.html
+__pycache__/
+node_modules/
+tests/e2e/*.png
