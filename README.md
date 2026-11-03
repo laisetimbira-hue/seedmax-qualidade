@@ -40,7 +40,7 @@ nome** da constante que antes ficava no HTML (`LOTS`, `SUMMARY`,
 `HISTORICO_APROVACAO`, `MUDANCAS_RECENTES`, `DIAG_DATA`, `TZ_DATA`,
 `CAMPOS_SIGEF`, `CV_META`, `CV_UBS` e os de Inverno), mais `qualidade/_meta`
 com a versão e a data da atualização. Cada lote tem um `lotId` estável
-(ex.: `SOJA2526_26S01F`) para a futura Central de Lotes (`lots/{lotId}`,
+(ex.: `SOJA2526_26S999X`) para a futura Central de Lotes (`lots/{lotId}`,
 regra já pronta).
 
 ## Perfis (`users/{uid}`)
