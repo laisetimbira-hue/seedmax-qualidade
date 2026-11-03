@@ -1,0 +1,1658 @@
+#!/usr/bin/env python3
+"""
+SEEDMAX — atualização automática dos dados da Gestão de Qualidade.
+
+Baixa as planilhas do Google Drive, processa (mesmas regras de sempre) e
+grava o resultado no banco protegido (Firestore, coleção "qualidade").
+O index.html NÃO recebe mais dados: o dashboard só os busca depois do
+login. Roda dentro do GitHub Actions.
+
+Configuração via variáveis de ambiente (secrets do repositório):
+  FIREBASE_SERVICE_ACCOUNT → JSON da conta de serviço do projeto Firebase
+                              (credencial administrativa — só em secret)
+  ID_ANALISES          → ID do arquivo ANALISES_DE_SEMENTES_DE_VERAO_25-26.xlsx
+  ID_BENEF             → ID do arquivo LOTES_BENEFICIADOS_VERAO_25-26.xlsx
+  ID_ANALISES_INVERNO  → (opcional) ID do arquivo ANALISES_DE_SEMENTES_INVERNO
+  ID_BENEF_INVERNO     → (opcional) ID do arquivo de Lotes Beneficiados do Inverno
+"""
+
+import os
+import re
+import io
+import json
+import sys
+from datetime import datetime, timezone, timedelta
+from collections import defaultdict
+
+import requests
+import pandas as pd
+import openpyxl
+
+import seedmax_dados as store
+
+# ---------------------------------------------------------------- config
+
+
+ID_ANALISES = os.environ.get("ID_ANALISES", "").strip()
+ID_BENEF    = os.environ.get("ID_BENEF", "").strip()
+
+# Safra de Inverno 26/26 (trigo, cevada, aveia branca, aveia preta, nabo,
+# ervilha, ervilhaca, trigo mourisco) — totalmente separada da soja acima,
+# planilhas próprias. Opcionais: enquanto não estiverem configuradas nos
+# secrets, a automação continua normalmente só com a soja e preserva o que
+# já estiver publicado em Inverno (igual ao comportamento do ID_BENEF).
+ID_ANALISES_INVERNO = os.environ.get("ID_ANALISES_INVERNO", "").strip()
+ID_BENEF_INVERNO    = os.environ.get("ID_BENEF_INVERNO", "").strip()
+
+# Fuso de Brasília — o GitHub Actions roda em UTC
+HOJE = datetime.now(timezone(timedelta(hours=-3))).strftime("%d/%m/%Y")
+
+# Carimbo com data e hora (Brasília, UTC-3 fixo) — usado apenas no cabeçalho "ATUALIZAÇÃO"
+CARIMBO_HEADER = datetime.now(timezone(timedelta(hours=-3))).strftime("%d/%m/%Y %H:%M")
+
+APROVADOS = {"A", "B", "BV"}
+
+# Nomes usados por terceiros que não batem com o código oficial do CV_META —
+# a planilha LOTES_BENEFICIADOS mistura, dependendo da UBS/obtentor, ora o
+# nome fantasia (cultivares Brasmax) ora o código com pequenas variações de
+# espaço/sufixo (cultivares Corteva). Sem essa normalização, o mesmo cultivar
+# aparecia como "cultivares" diferentes na aba Beneficiamento (ex.: ZEUS de
+# um lado e 55I57RSF IPRO do outro), fragmentando os totais.
+BENEF_ALIASES = {
+    "VALENTE": "6968RSF RR",
+    "C 2605 E": "C2605 E",
+    "TITANIUM": "56IX58RSF I2X",
+    "ZEUS": "55I57RSF IPRO",
+    "ORION": "55IX56RSF I2X",
+    "RAÇA": "63E66RSF E",
+    "IMUNE": "53IX55RSF I2X",
+    "VÊNUS": "57K58RSF CE",
+    "GRAFENO": "57K56RSF CE",
+    "RAIO": "50I52RSF IPRO",
+    "FIBRA": "64I61RSF IPRO",
+    "BATALHA": "68K66RSF CE",
+    "NEXUS": "64IX66RSF I2X",
+    "COMPACTA": "65I65RSF IPRO",
+    # variações de grafia do mesmo código (espaço a mais/faltando, sufixo omitido)
+    "C2615": "C2615CE",
+    "C2615 CE": "C2615CE",
+    "64I61 RSF IPRO": "64I61RSF IPRO",
+    "C2645 CE": "C2645CE",
+    "C2645": "C2645CE",
+}
+_BENEF_ALIASES_UP = {k.upper(): v for k, v in BENEF_ALIASES.items()}
+
+
+def log(msg):
+    print(msg, flush=True)
+
+
+# O repositório é público, então o log do GitHub Actions também é. Números
+# da safra (lotes, aprovação, bags) só aparecem no log se LOG_DETALHADO=1
+# for definido manualmente numa execução de teste.
+LOG_DETALHADO = os.environ.get("LOG_DETALHADO", "") == "1"
+
+
+def log_detalhe(msg):
+    if LOG_DETALHADO:
+        log(msg)
+
+
+# ---------------------------------------------------------------- download
+
+def extrair_id(valor):
+    """Aceita o ID puro ou uma URL completa colada no secret."""
+    v = (valor or "").strip().strip('"').strip("'")
+    if not v:
+        return ""
+    # .../spreadsheets/d/ID/edit  ou  .../file/d/ID/view
+    m = re.search(r"/d/([a-zA-Z0-9_-]{20,})", v)
+    if m:
+        return m.group(1)
+    # ...?id=ID  ou  ...&id=ID
+    m = re.search(r"[?&]id=([a-zA-Z0-9_-]{20,})", v)
+    if m:
+        return m.group(1)
+    return v
+
+
+def baixar(file_id, nome, obrigatorio=True):
+    """Baixa um arquivo do Drive. Funciona para .xlsx e para Sheets nativo.
+
+    Se obrigatorio=False e o ID não estiver configurado, devolve None em vez
+    de abortar — o chamador decide o que fazer.
+    """
+    file_id = extrair_id(file_id)
+
+    if not file_id:
+        if not obrigatorio:
+            log(f"  {nome}: ID não configurado — etapa será pulada")
+            return None
+        raise SystemExit(f"ERRO: ID do arquivo '{nome}' não configurado nos secrets.")
+
+    log(f"  {nome}: id={file_id[:8]}...{file_id[-4:]} ({len(file_id)} caracteres)")
+
+    tentativas = [
+        ("Sheets nativo",
+         f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx"),
+        ("Drive usercontent",
+         f"https://drive.usercontent.google.com/download?id={file_id}&export=download"),
+        ("Drive uc (legado)",
+         f"https://drive.google.com/uc?export=download&id={file_id}"),
+    ]
+
+    sessao = requests.Session()
+    sessao.headers.update({"User-Agent": "Mozilla/5.0 (compatible; SeedBaseBot/1.0)"})
+
+    for rotulo, url in tentativas:
+        try:
+            r = sessao.get(url, timeout=120, allow_redirects=True)
+        except Exception as e:
+            log(f"    [{rotulo}] falhou na conexão: {type(e).__name__}: {e}")
+            continue
+
+        ctype = r.headers.get("content-type", "?").split(";")[0]
+        log(f"    [{rotulo}] HTTP {r.status_code} · {ctype} · {len(r.content):,} bytes")
+
+        if r.status_code != 200:
+            continue
+
+        if r.content[:2] == b"PK":          # assinatura de xlsx/zip
+            log(f"    -> OK via {rotulo}")
+            return io.BytesIO(r.content)
+
+        # Arquivo grande: Google devolve uma página pedindo confirmação
+        if b"confirm" in r.content[:60000].lower():
+            token = re.search(rb'name="confirm"\s+value="([^"]+)"', r.content)
+            uuid  = re.search(rb'name="uuid"\s+value="([^"]+)"', r.content)
+            if token:
+                params = {"id": file_id, "export": "download",
+                          "confirm": token.group(1).decode()}
+                if uuid:
+                    params["uuid"] = uuid.group(1).decode()
+                r2 = sessao.get("https://drive.usercontent.google.com/download",
+                                params=params, timeout=180)
+                if r2.status_code == 200 and r2.content[:2] == b"PK":
+                    log(f"    -> OK via {rotulo} (após confirmação)")
+                    return io.BytesIO(r2.content)
+
+        # Diagnóstico: mostrar o começo do que veio
+        if LOG_DETALHADO:
+            amostra = r.content[:300].decode("utf-8", errors="replace").replace("\n", " ")
+            log(f"    conteúdo recebido (início): {amostra[:200]}")
+
+    raise SystemExit(
+        f"\nERRO: não consegui baixar '{nome}' (id={file_id[:8]}...{file_id[-4:]}).\n"
+        f"Verifique, nesta ordem:\n"
+        f"  1. O arquivo está compartilhado como 'Qualquer pessoa com o link' "
+        f"com permissão de Leitor?\n"
+        f"  2. O ID no secret corresponde a ESTE arquivo?\n"
+        f"  3. O arquivo está na sua conta pessoal ou em um Drive corporativo "
+        f"com restrição de domínio? Contas corporativas costumam bloquear "
+        f"acesso externo mesmo com o link ativo.\n"
+        f"Os códigos HTTP acima indicam o motivo: 404 = ID errado, "
+        f"403 = sem permissão pública, 200 com HTML = página de login."
+    )
+
+
+# ---------------------------------------------------------------- helpers
+
+def nz(v):
+    if isinstance(v, str):
+        return None if v.strip() == "" else v
+    return None if pd.isna(v) else v
+
+
+def r1(v):
+    if v is None:
+        return None
+    try:
+        return round(float(str(v).strip()), 1)
+    except (TypeError, ValueError):
+        return None
+
+
+def to_float(v):
+    if v is None:
+        return None
+    if isinstance(v, str) and v.startswith("="):
+        return None  # fórmula não avaliada
+    try:
+        return float(str(v).replace(",", ".").strip())
+    except (TypeError, ValueError):
+        return None
+
+
+# ---------------------------------------------------------------- classificação
+
+def classificar(germ, vigor, germ_of, vigor_of, tz_rank):
+    def gb(g):
+        if g is None:
+            return None
+        return "A" if g >= 95 else "B" if g >= 85 else "C" if g >= 80 else "D"
+
+    def vb(v):
+        if v is None:
+            return None
+        return "A" if v >= 95 else "B" if v >= 80 else "BV" if v >= 70 else "D"
+
+    rg, rv = gb(germ), vb(vigor)
+
+    if germ_of is not None and vigor_of is not None:
+        if vigor_of < 80 or germ_of < 80:
+            final = "D"
+        elif germ_of >= 95:
+            final = "A"
+        elif germ_of >= 90:
+            final = "B"
+        else:
+            final = "C"
+    elif vigor_of is not None:
+        final = "A" if vigor_of >= 95 else "B" if vigor_of >= 80 else "D"
+    else:
+        if rg is None and rv is None:
+            final = tz_rank if tz_rank else "X"
+        elif rg == "D":
+            final = "D"
+        elif rg == "C":
+            final = "D" if rv in ("BV", "D") else "C"
+        elif rg in ("B", "A"):
+            if rv == "D":
+                final = "D"
+            elif rv == "BV":
+                final = "D" if tz_rank == "C" else "BV"
+            elif rv == "B":
+                final = "C" if tz_rank == "C" else "B"
+            else:
+                final = {"A": "B", "B": "C"}[rg] if tz_rank == "C" else rg
+        else:
+            final = "X"
+
+    rotulos = {
+        "A": "Ótimo", "B": "Bom", "C": "Condicional",
+        "BV": "Condicional Vigor", "D": "Ruim", "X": "Pendente",
+    }
+    return rg, rv, final, rotulos[final]
+
+
+# ---------------------------------------------------------------- ANALISES
+
+def parse_analises(buf):
+    df = pd.read_excel(buf, sheet_name="SOJA 25-26")
+    df = df[df["LOTE"].notna()].reset_index(drop=True)
+
+    # Coluna de hipoclorito (DM %) — resolvida por busca aproximada no
+    # cabeçalho para tolerar pequenas variações de espaço/caixa no nome
+    # exato da planilha, em vez de travar o pipeline com um KeyError.
+    col_hipoclorito = next(
+        (c for c in df.columns if "HIPOCLORITO" in str(c).strip().upper()), None
+    )
+
+    lots = []
+    for _, row in df.iterrows():
+        germ     = r1(nz(row["GER. ROLO DE PAPEL %"]))
+        vigor    = r1(nz(row["ROLO DE PAPEL E.A. %"]))
+        germ_of  = r1(nz(row["GERM OFICIAL %"]))
+        vigor_of = r1(nz(row["VIGOR OFICIAL %"]))
+        tz_rank  = nz(row["RAKING TZ GERM"])
+        rg, rv, ranking, status = classificar(germ, vigor, germ_of, vigor_of, tz_rank)
+
+        kg_raw = nz(row["QUANT.    KG"])
+        umid   = nz(row["UMIDADE %"])
+        hipoclorito = r1(nz(row[col_hipoclorito])) if col_hipoclorito else None
+
+        lots.append({
+            "cultivar": str(nz(row["CULTIVAR"])).strip() if nz(row["CULTIVAR"]) else None,
+            "lote": nz(row["LOTE"]),
+            "peneira": nz(row["PENEIRA "]),
+            "categoria": nz(row["CATEGORIA "]),
+            "ubs": nz(row["UBS"]),
+            "umidade": round(float(umid), 2) if umid is not None else None,
+            "hipoclorito": hipoclorito,
+            "tz_viab": r1(nz(row["TZ VIABILDIADE (1-5) "])),
+            "tz_vigor": r1(nz(row["TZ VIGOR (1-3)"])),
+            "rank_tz": tz_rank,
+            "germ": germ, "rank_germ": rg,
+            "vigor": vigor, "rank_vigor": rv,
+            "germ_oficial": germ_of, "vigor_oficial": vigor_of,
+            "modo_classificacao": (
+                "ambos" if (germ_of and vigor_of) else ("vigor" if vigor_of else "nenhum")
+            ),
+            "ranking": ranking, "status": status,
+            "bags": int(row["QUANT BB"]) if pd.notna(row["QUANT BB"]) else None,
+            "kg": int(kg_raw) if kg_raw and str(kg_raw).strip() not in ("", "None") else None,
+            "pms_etq": r1(nz(row["PMS (g) ETIQUETA"])),
+            "peso_bag": r1(nz(row["PESO BAG"])),
+            "sementes_m": r1(nz(row["N° SEMENTES (MILHÕES)"])),
+        })
+
+    return lots
+
+
+def montar_summary(lots):
+    df = pd.DataFrame(lots)
+    df["germ_eff"]  = df["germ_oficial"].combine_first(df["germ"])
+    df["vigor_eff"] = df["vigor_oficial"].combine_first(df["vigor"])
+
+    summary = []
+    for cv, grp in df.groupby("cultivar"):
+        ap = grp[grp["ranking"].isin(APROVADOS)]
+        c = grp["ranking"].value_counts().to_dict()
+        summary.append({
+            "cultivar": cv,
+            "total_kg": int(grp["kg"].sum()),
+            "lotes": int(len(grp)),
+            "germ_media": r1(ap["germ_eff"].dropna().mean()),
+            "vigor_media": r1(ap["vigor_eff"].dropna().mean()),
+            "tz_viab_media": r1(grp["tz_viab"].dropna().mean()),
+            "tz_vigor_media": r1(grp["tz_vigor"].dropna().mean()),
+            "rank_A": int(c.get("A", 0)), "rank_B": int(c.get("B", 0)),
+            "rank_BV": int(c.get("BV", 0)), "rank_C": int(c.get("C", 0)),
+            "rank_D": int(c.get("D", 0)), "rank_X": int(c.get("X", 0)),
+        })
+    summary.sort(key=lambda s: -s["total_kg"])
+
+    pms_cv = []
+    for cv, grp in df.groupby("cultivar"):
+        e = {"cultivar": cv}
+        total_bags = 0
+        for pen, suf in [("P1", "p1"), ("P2", "p2")]:
+            sub = grp[grp["peneira"] == pen]
+            bags = int(sub["bags"].sum()) if len(sub) else 0
+            total_bags += bags
+            ap = sub[sub["ranking"].isin(APROVADOS)]
+            c = sub["ranking"].value_counts().to_dict()
+            e[f"bags_{suf}"]   = bags
+            e[f"pms_{suf}"]    = r1(ap["pms_etq"].dropna().mean())
+            e[f"aprov_{suf}"]  = int(c.get("A", 0) + c.get("B", 0) + c.get("BV", 0))
+            e[f"reprov_{suf}"] = int(c.get("C", 0) + c.get("D", 0))
+            e[f"pend_{suf}"]   = int(c.get("X", 0))
+        e["bags_total"] = total_bags
+        pms_cv.append(e)
+    pms_cv.sort(key=lambda p: -p["bags_total"])
+
+    return summary, pms_cv
+
+
+# ---------------------------------------------------------------- DIAGNÓSTICO DA SAFRA
+#
+# Gera o texto narrativo da aba "Diagnóstico da Safra" (DIAG_DATA) a partir dos
+# dados reais desta execução, em vez de deixá-lo estático. Antes, esse texto
+# era escrito uma vez à mão e nunca mais tocado pela automação — foi encontrado
+# citando "379 lotes... 42.7% de aprovação" numa safra que já ia em 708 lotes e
+# 66%, ou seja, desatualizado há semanas. As faixas de status (crítico/regular/
+# bom/excelente) e os textos-modelo abaixo foram reconstruídos a partir do
+# conteúdo antigo do DIAG_DATA; ajuste aqui se o critério de negócio for outro.
+
+def _status_cultivar(pct):
+    if pct >= 99.95:
+        return (
+            "excelente",
+            "Melhor desempenho da safra — todos os lotes aprovados.",
+            "Cultivar recomendado para comercialização sem restrições.",
+        )
+    if pct >= 80:
+        return (
+            "bom",
+            "Bom desempenho geral.",
+            "Comercialização possível com verificação individual dos lotes condicionais e reprovados.",
+        )
+    if pct >= 50:
+        return (
+            "regular",
+            "Desempenho intermediário, requer atenção.",
+            "Avaliar individualmente cada lote antes da comercialização.",
+        )
+    return (
+        "critico",
+        "Desempenho crítico — maioria dos lotes reprovada.",
+        "Uso comercial restrito — verificar lotes individualmente e avaliar destino dos reprovados.",
+    )
+
+
+def _diagnostico_cultivar(row, lots_cv):
+    total = row["lotes"]
+    aprov = row["rank_A"] + row["rank_B"] + row["rank_BV"]
+    cond, reprov, pend = row["rank_C"], row["rank_D"], row["rank_X"]
+    pct = round(aprov / total * 100, 1) if total else 0.0
+
+    partes = [f"{total} lotes analisados, totalizando {round(row['total_kg'] / 1000)}t."]
+
+    detalhes = [f"{aprov} aprovados"]
+    if cond:
+        detalhes.append(f"{cond} condicionais")
+    if reprov:
+        detalhes.append(f"{reprov} reprovados")
+    if pend:
+        detalhes.append(f"{pend} pendentes")
+    partes.append(f"Taxa de aprovação de {pct}% — {', '.join(detalhes)}.")
+
+    if row["germ_media"] is not None and row["vigor_media"] is not None:
+        partes.append(f"Germinação média de {row['germ_media']}% e vigor médio de {row['vigor_media']}%.")
+
+    if reprov:
+        vigor_fail = sum(
+            1 for l in lots_cv
+            if l["ranking"] == "D" and l.get("vigor_oficial") is not None and l["vigor_oficial"] < 80
+        )
+        germ_fail = sum(
+            1 for l in lots_cv
+            if l["ranking"] == "D" and l.get("germ_oficial") is not None and l["germ_oficial"] < 80
+        )
+        if vigor_fail or germ_fail:
+            if vigor_fail >= germ_fail:
+                partes.append(f"Principal causa de reprovação: vigor abaixo de 80% em {vigor_fail} lotes.")
+            else:
+                partes.append(f"Principal causa de reprovação: germinação abaixo de 80% em {germ_fail} lotes.")
+
+    if pend:
+        bags_pend = sum((l.get("bags") or 0) for l in lots_cv if l["ranking"] == "X")
+        partes.append(f"{pend} lotes com {bags_pend} bags ainda sem análise completa.")
+
+    return " ".join(partes), pct, aprov, cond, reprov, pend, total
+
+
+def montar_diagnostico(lots, summary):
+    df = pd.DataFrame(lots)
+    df["germ_eff"]  = df["germ_oficial"].combine_first(df["germ"])
+    df["vigor_eff"] = df["vigor_oficial"].combine_first(df["vigor"])
+
+    total   = len(df)
+    n_cvs   = df["cultivar"].nunique()
+    aprov   = int(df["ranking"].isin(APROVADOS).sum())
+    cond    = int((df["ranking"] == "C").sum())
+    reprov  = int((df["ranking"] == "D").sum())
+    pend    = int((df["ranking"] == "X").sum())
+    pct     = round(aprov / total * 100, 1) if total else 0.0
+
+    ap = df[df["ranking"].isin(APROVADOS)]
+    germ_g  = r1(ap["germ_eff"].dropna().mean())
+    vigor_g = r1(ap["vigor_eff"].dropna().mean())
+    tz_g    = r1(df["tz_viab"].dropna().mean())
+
+    geral = (
+        f"A safra conta com {total} lotes analisados, distribuídos em {n_cvs} cultivares. "
+        f"A taxa de aprovação está em {pct}%, com {aprov} lotes aprovados (A+B), {cond} condicionais (C), "
+        f"{reprov} reprovados (D) e {pend} aguardando análise (X). "
+        f"A média geral de germinação é {germ_g}%, vigor {vigor_g}% e TZ viabilidade {tz_g}%."
+    )
+
+    d_lots = df[df["ranking"] == "D"]
+    vigor_fail_g = int((d_lots["vigor_oficial"] < 80).sum())
+    germ_fail_g  = int((d_lots["germ_oficial"] < 80).sum())
+    if reprov == 0:
+        problema = "Nenhum lote foi reprovado na safra até o momento."
+    elif vigor_fail_g >= germ_fail_g:
+        problema = (
+            f"O principal critério responsável pelas reprovações é o Vigor EA. "
+            f"{vigor_fail_g} lotes foram reprovados com vigor abaixo de 80%, representando a maioria dos "
+            f"{reprov} lotes classificados como Ruim (D). A germinação abaixo de 80% contribui com outros "
+            f"{germ_fail_g} lotes reprovados. Como o sistema utiliza o pior critério entre os três, qualquer "
+            f"valor abaixo do mínimo resulta em reprovação do lote inteiro."
+        )
+    else:
+        problema = (
+            f"O principal critério responsável pelas reprovações é a Germinação. "
+            f"{germ_fail_g} lotes foram reprovados com germinação abaixo de 80%, representando a maioria dos "
+            f"{reprov} lotes classificados como Ruim (D). O vigor abaixo de 80% contribui com outros "
+            f"{vigor_fail_g} lotes reprovados. Como o sistema utiliza o pior critério entre os três, qualquer "
+            f"valor abaixo do mínimo resulta em reprovação do lote inteiro."
+        )
+
+    if pend == 0:
+        pendentes_txt = "Não há lotes pendentes de análise no momento."
+    else:
+        bags_pend_g = int(df.loc[df["ranking"] == "X", "bags"].fillna(0).sum())
+        pendentes_txt = (
+            f"{pend} lotes ainda não possuem análise de vigor e germinação, totalizando {bags_pend_g} bags "
+            f"sem classificação definida. Estes lotes permanecem como pendentes até a conclusão das análises "
+            f"laboratoriais."
+        )
+
+    cultivares_out = []
+    for row in summary:
+        lots_cv = [l for l in lots if l["cultivar"] == row["cultivar"]]
+        diagnostico, pct_c, aprov_c, cond_c, reprov_c, pend_c, total_c = _diagnostico_cultivar(row, lots_cv)
+        cor, status_txt, recomendacao = _status_cultivar(pct_c)
+        cultivares_out.append({
+            "cultivar": row["cultivar"],
+            "volume": f"{round(row['total_kg'] / 1000)}t",
+            "pct_aprov": pct_c,
+            "status_cor": cor,
+            "status_txt": status_txt,
+            "diagnostico": diagnostico,
+            "recomendacao": recomendacao,
+            "aprovados": aprov_c, "condicionais": cond_c, "reprovados": reprov_c,
+            "pendentes": pend_c, "total": total_c,
+        })
+
+    return {
+        "global": {"geral": geral, "problema": problema, "pendentes": pendentes_txt},
+        "cultivares": cultivares_out,
+    }
+
+
+def parse_comprados(buf):
+    wb = openpyxl.load_workbook(buf)
+    ws = wb["LOTES COMPRADOS"]
+    header = [ws.cell(1, c).value for c in range(1, ws.max_column + 1)]
+    col = {h: i + 1 for i, h in enumerate(header) if h}
+    def _norm(s): return str(s).strip().upper()
+    col_norm = {_norm(h): i + 1 for i, h in enumerate(header) if h}
+
+    def cell(r, nome):
+        idx = col.get(nome)
+        if idx is None:
+            idx = col_norm.get(_norm(nome))
+        return ws.cell(r, idx).value if idx else None
+
+    def txt(r, nome):
+        v = cell(r, nome)
+        if v is None:
+            return None
+        # Quando a célula é numérica (ex.: "LOTE DE ORIGEM" digitado como
+        # número em vez de texto), o Python devolve 10028.0 em vez de 10028.
+        # Sem isso, o ".0" vazava pro dashboard mesmo não existindo na planilha.
+        if isinstance(v, float) and v.is_integer():
+            v = int(v)
+        return str(v).strip()
+
+    out = []
+    for r in range(2, ws.max_row + 1):
+        cultivar = ws.cell(r, 1).value
+        if not cultivar:
+            continue
+
+        bags     = to_float(cell(r, "QUANT BB"))
+        peso_bag = to_float(cell(r, "PESO BAG"))
+        kg_raw   = to_float(cell(r, "QUANT.    KG"))
+        kg = int(bags * peso_bag) if bags and peso_bag else (int(kg_raw) if kg_raw else None)
+
+        # PMS pode vir como fórmula (=PESO BAG/5) — nesse caso calcula na mão
+        pms_raw = cell(r, "PMS (g) ETIQUETA")
+        if pms_raw is not None and not (isinstance(pms_raw, str) and pms_raw.startswith("=")):
+            pms_etq = round(float(pms_raw), 1)
+        elif peso_bag:
+            pms_etq = round(peso_bag / 5, 1)
+        else:
+            pms_etq = None
+
+        out.append({
+            "cultivar": str(cultivar).strip(),
+            "lote": txt(r, "LOTE SCV"),
+            "lote_origem": txt(r, "LOTE DE ORIGEM"),
+            "empresa": txt(r, "EMPRESA"),
+            "germ_oficial": to_float(cell(r, "GERM OFICIAL %")),
+            "vigor_oficial": to_float(cell(r, "VIGOR OFICIAL %")),
+            "bags": int(bags) if bags else None,
+            "peso_bag": peso_bag,
+            "kg": kg,
+            "categoria_origem": str(ws.cell(r, 2).value).strip() if ws.cell(r, 2).value else None,
+            "categoria_reembalado": str(ws.cell(r, 3).value).strip() if ws.cell(r, 3).value else None,
+            "peneira": txt(r, "PENEIRA "),
+            "pms_etq": pms_etq,
+            "status": txt(r, "STATUS"),
+        })
+    return out
+
+
+def parse_nosso_plantio(buf):
+    """Aba 'NOSSO PLANTIO' — sementes produzidas em área própria (Compra de
+    Terceiros tem sua própria aba/tela; esta é uma fonte separada, com
+    colunas mais simples: sem lote de origem, sem vigor oficial, sem
+    categoria dividida em origem/reembalado)."""
+    wb = openpyxl.load_workbook(buf, data_only=True)
+    if "NOSSO PLANTIO" not in wb.sheetnames:
+        log("  aviso: aba 'NOSSO PLANTIO' não encontrada — ignorando")
+        return []
+    ws = wb["NOSSO PLANTIO"]
+    header = [ws.cell(1, c).value for c in range(1, ws.max_column + 1)]
+    col = {h: i + 1 for i, h in enumerate(header) if h}
+    def _norm(s): return str(s).strip().upper()
+    col_norm = {_norm(h): i + 1 for i, h in enumerate(header) if h}
+
+    def cell(r, nome):
+        idx = col.get(nome)
+        if idx is None:
+            idx = col_norm.get(_norm(nome))
+        return ws.cell(r, idx).value if idx else None
+
+    def cell_any(r, *nomes):
+        """Tenta várias variações conhecidas do rótulo da coluna, na ordem —
+        essa aba já trocou o nome de 'QUANT BB'/'PESO BAG'/'N° SEMENTES
+        (MILHÕES)' para 'QUANT EMBALAGEM'/'PESO EMBALAGEM'/'EMBALAGEM' sem
+        aviso, então em vez de travar numa única grafia, testa todas as
+        conhecidas até encontrar a coluna."""
+        for nome in nomes:
+            v = cell(r, nome)
+            if v is not None:
+                return v
+        return None
+
+    def txt(r, nome):
+        v = cell(r, nome)
+        if v is None:
+            return None
+        if isinstance(v, float) and v.is_integer():
+            v = int(v)
+        return str(v).strip()
+
+    def txt_any(r, *nomes):
+        v = cell_any(r, *nomes)
+        if v is None:
+            return None
+        if isinstance(v, float) and v.is_integer():
+            v = int(v)
+        return str(v).strip()
+
+    out = []
+    for r in range(2, ws.max_row + 1):
+        cultivar = cell(r, "CULTIVAR")
+        if not cultivar:
+            continue
+
+        bags     = to_float(cell_any(r, "QUANT EMBALAGEM", "QUANT BB", "QUANTIDADE"))
+        peso_bag = to_float(cell_any(r, "PESO EMBALAGEM", "PESO BAG"))
+        kg_raw   = to_float(cell_any(r, "QUANT.    KG", "QUANT. KG", "QUANT KG"))
+        kg = int(bags * peso_bag) if bags and peso_bag else (int(kg_raw) if kg_raw else None)
+
+        data_nf = cell(r, "DATA NF")
+        if hasattr(data_nf, "strftime"):
+            data_nf = data_nf.strftime("%d/%m/%Y")
+        elif data_nf:
+            data_nf = str(data_nf).strip()
+        else:
+            data_nf = None
+
+        out.append({
+            "cultivar": str(cultivar).strip(),
+            "lote": txt(r, "LOTE"),
+            "empresa": txt(r, "EMPRESA"),
+            "categoria": txt(r, "CATEGORIA"),
+            "peneira": txt(r, "PENEIRA"),
+            "pms": to_float(cell(r, "PMS (g)")),
+            "germ_oficial": to_float(cell(r, "GERM OFICIAL %")),
+            "bags": int(bags) if bags else None,
+            "peso_bag": peso_bag,
+            "kg": kg,
+            "data_nf": data_nf,
+            "num_sementes": txt_any(r, "EMBALAGEM", "N° SEMENTES (MILHÕES)", "Nº SEMENTES (MILHÕES)"),
+        })
+    return out
+
+
+# ---------------------------------------------------------------- INVERNO (safra 26/26)
+#
+# Fonte: planilha ANALISES_DE_SEMENTES_INVERNO — totalmente separada da
+# planilha de soja (ANALISES_DE_SEMENTES_DE_VERAO). Cada cultura (trigo,
+# cevada, aveia branca, aveia preta, nabo, ervilha, ervilhaca — e trigo
+# mourisco quando a aba existir) tem sua própria aba, todas com o mesmo
+# formato geral, mas cada uma com pequenas variações no nome da coluna de
+# germinação oficial (cevada usa um padrão próprio da AMBEV, nabo usa
+# "rolo de papel" em vez de "germinação" no nome). Classificação aqui é bem
+# mais simples que a da soja: só germinação oficial — sem vigor, sem TZ.
+# Aprovado se >=90%, senão reprovado. Essa regra é geral pro Inverno (não
+# por cultura) — se algum dia mudar por cultura, ajustar GERMINACAO_MINIMA.
+
+GERMINACAO_MINIMA_INVERNO = 90.0
+
+# nome da aba (comparado sem acentuar maiúsculas/espaços nas pontas) -> cultura
+CULTURAS_INVERNO = {
+    "TRIGO": "Trigo",
+    "TRIGO MOURISCO": "Trigo Mourisco",  # ainda não existe na planilha (nova cultura desta safra)
+    "CEVADA": "Cevada",
+    "AVEIA BRANCA": "Aveia Branca",
+    "AVEIA PRETA": "Aveia Preta",
+    "NABO": "Nabo",
+    "ERVILHA": "Ervilha",
+    "ERVILHACA": "Ervilhaca",
+}
+
+# qual coluna usar como "germinação oficial" em cada cultura — na maioria é
+# "OFICIAL GERMINAÇÃO", mas cevada e nabo fogem do padrão
+GERMINACAO_COL_INVERNO = {
+    "Cevada": ["OFICIAL AMBEV"],
+    "Nabo": ["OFICIAL GER. ROLO DE PAPEL"],
+}
+GERMINACAO_COL_PADRAO_INVERNO = ["OFICIAL GERMINAÇÃO", "GERMINAÇÃO UCS", "GER. ROLO DE PAPEL"]
+
+
+def _norm_aba(s):
+    return str(s).strip().upper()
+
+
+def _achar_aba_inverno(wb, nome_aba):
+    """Acha a aba pelo nome tolerando espaço extra nas pontas (a aba de
+    ervilha, por exemplo, vem salva como ' ERVILHA ' na planilha)."""
+    alvo = _norm_aba(nome_aba)
+    for sheetname in wb.sheetnames:
+        if _norm_aba(sheetname) == alvo:
+            return wb[sheetname]
+    return None
+
+
+def parse_inverno_lotes(buf):
+    """Lê as abas de cultura (uma por cultura) da planilha ANALISES_INVERNO.
+    Cada lote vira uma entrada com cultura, cultivar, lote, categoria, kg,
+    embalagem e germinação oficial — e a aprovação binária (>=90%)."""
+    wb = openpyxl.load_workbook(buf, data_only=True)
+    out = []
+
+    for nome_aba, cultura in CULTURAS_INVERNO.items():
+        ws = _achar_aba_inverno(wb, nome_aba)
+        if ws is None:
+            log(f"  aviso: aba '{nome_aba}' (Inverno) não encontrada — ignorando")
+            continue
+
+        header = [ws.cell(1, c).value for c in range(1, ws.max_column + 1)]
+        col_norm = {_norm_aba(h): i + 1 for i, h in enumerate(header) if h}
+
+        def cell(r, *nomes, _col_norm=col_norm):
+            for nome in nomes:
+                idx = _col_norm.get(_norm_aba(nome))
+                if idx:
+                    v = ws.cell(r, idx).value
+                    if v is not None:
+                        return v
+            return None
+
+        candidatos_germ = GERMINACAO_COL_INVERNO.get(cultura, GERMINACAO_COL_PADRAO_INVERNO)
+
+        n_lote = 0
+        for r in range(2, ws.max_row + 1):
+            cultivar = cell(r, "CULTIVAR")
+            if not cultivar:
+                continue
+
+            data = cell(r, "DATA")
+            if hasattr(data, "strftime"):
+                data = data.strftime("%d/%m/%Y")
+            elif data:
+                data = str(data).strip()
+            else:
+                data = None
+
+            germ = to_float(cell(r, *candidatos_germ))
+            if germ is not None:
+                status = "Aprovado" if germ >= GERMINACAO_MINIMA_INVERNO else "Reprovado"
+            else:
+                status = None
+
+            # "QUANT." é a contagem de embalagens (ex.: 28 big bags), não o
+            # peso — o peso total do lote vem de "PESO LOTE". Usar QUANT.
+            # direto aqui subestimava o KG em várias vezes (28 em vez de
+            # 28.000, por exemplo). Mantém QUANT. como fallback só pro caso
+            # de algum lote antigo não ter "PESO LOTE" preenchido.
+            peso_lote = to_float(cell(r, "PESO LOTE"))
+            quant = to_float(cell(r, "QUANT."))
+            kg = peso_lote if peso_lote is not None else quant
+            embalagem = cell(r, "EMBALAGEM")
+
+            out.append({
+                "cultura": cultura,
+                "cultivar": str(cultivar).strip(),
+                "categoria": str(cell(r, "CATEGORIA")).strip() if cell(r, "CATEGORIA") else None,
+                "lote": str(cell(r, "LOTE DE ORIGEM", "LOTE")).strip() if cell(r, "LOTE DE ORIGEM", "LOTE") else None,
+                "data": data,
+                "kg": kg,
+                "embalagem": str(embalagem).strip() if embalagem else None,
+                "germinacao": germ,
+                "status": status,
+            })
+            n_lote += 1
+
+        log_detalhe(f"  Inverno/{cultura}: {n_lote} lotes")
+
+    return out
+
+
+def _cv_meta_inverno_index(lots_inverno):
+    """Cultivar (nome completo, como aparece nas abas de cultura) -> cultura.
+    Usado pra descobrir a cultura de um lote de Colheita/Comprados, cujos
+    nomes de cultivar às vezes vêm abreviados ou diferentes."""
+    idx = {}
+    for l in lots_inverno:
+        idx[_norm_aba(l["cultivar"])] = l["cultura"]
+    return idx
+
+
+def _inferir_cultura_inverno(cultivar_raw, idx_cultivar_cultura):
+    """Tenta descobrir a cultura de um cultivar que não bate 100% com o nome
+    oficial das abas de cultura — acontece nas abas de Colheita/Comprados,
+    que às vezes usam um nome curto ou sem espaço (ex.: 'CALIBRE' ou
+    'BLINDADO' em vez de 'TBIO CALIBRE'/'ORSBLINDADO') ou até o nome da
+    própria espécie como se fosse cultivar (ex.: cultivar='NABO'). Nessa
+    ordem: (1) nome igual a alguma cultura conhecida, (2) nome exatamente
+    igual a um cultivar já visto nas abas de cultura, (3) nome contido (ou
+    que contém) um cultivar conhecido, pra pegar variação de espaço/prefixo
+    de marca (ex.: 'ORSBLINDADO' contém 'BLINDADO'; 'IAPAR 61 (IBIPORÃ)'
+    contém 'IAPAR 61'). Não encontrando, devolve None — melhor deixar em
+    branco do que arriscar uma cultura errada."""
+    alvo = _norm_aba(cultivar_raw)
+    for cultura in CULTURAS_INVERNO.values():
+        if _norm_aba(cultura) == alvo:
+            return cultura
+    if alvo in idx_cultivar_cultura:
+        return idx_cultivar_cultura[alvo]
+    if len(alvo) >= 4:  # evita match curto demais virar falso positivo
+        for cultivar_conhecido, cultura in idx_cultivar_cultura.items():
+            if alvo in cultivar_conhecido or cultivar_conhecido in alvo:
+                return cultura
+        # variação de espaço dentro do nome (ex.: "ORS GLADIADOR" vs "ORSGLADIADOR")
+        alvo_sem_espaco = alvo.replace(" ", "")
+        for cultivar_conhecido, cultura in idx_cultivar_cultura.items():
+            conhecido_sem_espaco = cultivar_conhecido.replace(" ", "")
+            if alvo_sem_espaco == conhecido_sem_espaco:
+                return cultura
+    return None
+
+
+def parse_inverno_colheita(buf, lots_inverno):
+    """Aba 'COLHEITA' — equivalente ao 'Nosso Plantio' da soja: matéria-prima
+    da colheita própria chegando, antes de virar lote oficial classificado
+    (por isso o 'LOTE DE ORIGEM' vem com valores informais tipo 'PRÉ LOTE',
+    'SILO 6', em vez de um código de lote)."""
+    wb = openpyxl.load_workbook(buf, data_only=True)
+    ws = _achar_aba_inverno(wb, "COLHEITA")
+    if ws is None:
+        log("  aviso: aba 'COLHEITA' (Inverno) não encontrada — ignorando")
+        return []
+
+    idx_cultura = _cv_meta_inverno_index(lots_inverno)
+    header = [ws.cell(1, c).value for c in range(1, ws.max_column + 1)]
+    col_norm = {_norm_aba(h): i + 1 for i, h in enumerate(header) if h}
+
+    def cell(r, *nomes):
+        for nome in nomes:
+            idx = col_norm.get(_norm_aba(nome))
+            if idx:
+                v = ws.cell(r, idx).value
+                if v is not None:
+                    return v
+        return None
+
+    out = []
+    for r in range(2, ws.max_row + 1):
+        cultivar = cell(r, "CULTIVAR")
+        if not cultivar:
+            continue
+        cultivar = str(cultivar).strip()
+
+        data = cell(r, "DATA")
+        if hasattr(data, "strftime"):
+            data = data.strftime("%d/%m/%Y")
+        elif data:
+            data = str(data).strip()
+        else:
+            data = None
+
+        quant = to_float(cell(r, "QUANT."))
+        embalagem = cell(r, "EMBALAGEM")
+        empresa = cell(r, "EMPRESA") or cell(r, "EMPRESA2")
+
+        out.append({
+            "cultura": _inferir_cultura_inverno(cultivar, idx_cultura),
+            "cultivar": cultivar,
+            "categoria": str(cell(r, "CATEGORIA")).strip() if cell(r, "CATEGORIA") else None,
+            "data": data,
+            "kg": quant,
+            "lote_origem": str(cell(r, "LOTE DE ORIGEM")).strip() if cell(r, "LOTE DE ORIGEM") else None,
+            "embalagem": str(embalagem).strip() if embalagem else None,
+            "empresa": str(empresa).strip() if empresa else None,
+            "situacao": str(cell(r, "SITUAÇÃO")).strip() if cell(r, "SITUAÇÃO") else None,
+            "observacao": str(cell(r, "OBSERVAÇÃO")).strip() if cell(r, "OBSERVAÇÃO") else None,
+        })
+    return out
+
+
+def parse_inverno_comprados(buf, lots_inverno):
+    """Aba 'LOTES COMPRADOS' do Inverno — sementes compradas de terceiros,
+    todas as culturas juntas numa aba só (diferente das abas de cultura, que
+    são uma por cultura)."""
+    wb = openpyxl.load_workbook(buf, data_only=True)
+    ws = _achar_aba_inverno(wb, "LOTES COMPRADOS")
+    if ws is None:
+        log("  aviso: aba 'LOTES COMPRADOS' (Inverno) não encontrada — ignorando")
+        return []
+
+    idx_cultura = _cv_meta_inverno_index(lots_inverno)
+    header = [ws.cell(1, c).value for c in range(1, ws.max_column + 1)]
+    col_norm = {_norm_aba(h): i + 1 for i, h in enumerate(header) if h}
+
+    def cell(r, *nomes):
+        for nome in nomes:
+            idx = col_norm.get(_norm_aba(nome))
+            if idx:
+                v = ws.cell(r, idx).value
+                if v is not None:
+                    return v
+        return None
+
+    out = []
+    for r in range(2, ws.max_row + 1):
+        cultivar = cell(r, "CULTIVAR")
+        if not cultivar:
+            continue
+        cultivar = str(cultivar).strip()
+
+        data = cell(r, "DATA")
+        if hasattr(data, "strftime"):
+            data = data.strftime("%d/%m/%Y")
+        elif data:
+            data = str(data).strip()
+        else:
+            data = None
+
+        # "QUANT." é a contagem de embalagens, não o peso — o peso total do
+        # lote vem da coluna "KG" (ex.: 28 big bags = 28.000 kg). Usar
+        # QUANT. direto aqui subestimava o KG em várias vezes.
+        kg = to_float(cell(r, "KG"))
+        if kg is None:
+            kg = to_float(cell(r, "QUANT."))
+        embalagem = cell(r, "EMBALAGEM")
+        empresa = cell(r, "EMPRESA") or cell(r, "EMPRESA2")
+        # planilha de comprados não tem "oficial" — usa o teste disponível
+        germ = to_float(cell(r, "GERMINAÇÃO UCS", "GER. ROLO DE PAPEL"))
+        vigor = to_float(cell(r, "VIGOR UCS"))
+
+        # a aba já informa a cultura de cada lote direto na coluna CULTURA
+        # (ela mistura várias culturas numa aba só) — só recorre à inferência
+        # pelo nome do cultivar se a célula vier vazia.
+        cultura_cel = cell(r, "CULTURA")
+        cultura = str(cultura_cel).strip() if cultura_cel else _inferir_cultura_inverno(cultivar, idx_cultura)
+
+        out.append({
+            "cultura": cultura,
+            "cultivar": cultivar,
+            "categoria": str(cell(r, "CATEGORIA")).strip() if cell(r, "CATEGORIA") else None,
+            "data": data,
+            "kg": kg,
+            "lote_origem": str(cell(r, "LOTE DE ORIGEM")).strip() if cell(r, "LOTE DE ORIGEM") else None,
+            "embalagem": str(embalagem).strip() if embalagem else None,
+            "empresa": str(empresa).strip() if empresa else None,
+            "germinacao": germ,
+            "vigor": vigor,
+            "situacao": str(cell(r, "SITUAÇÃO")).strip() if cell(r, "SITUAÇÃO") else None,
+            "observacao": str(cell(r, "OBSERVAÇÃO")).strip() if cell(r, "OBSERVAÇÃO") else None,
+        })
+    return out
+
+
+def montar_cv_meta_inverno(lots_inverno, cv_meta_atual=None):
+    """Monta/atualiza o cadastro cultivar -> {cultura, obtentor}. Obtentor
+    fica em branco pra cultivar nova — é um dado que só a Laise tem, não dá
+    pra inferir da planilha (diferente de cultura, que a própria aba já
+    informa). Preserva obtentor já cadastrado anteriormente (não reseta a
+    cada atualização)."""
+    cv_meta_atual = cv_meta_atual or {}
+    novo = dict(cv_meta_atual)
+    for l in lots_inverno:
+        cv = l["cultivar"]
+        if cv not in novo:
+            novo[cv] = {"cultura": l["cultura"], "obtentor": None}
+        else:
+            novo[cv]["cultura"] = l["cultura"]  # cultura sempre vem da aba, pode atualizar
+    return novo
+
+
+# ---------------------------------------------------------------- BENEFICIADOS
+
+# Cada aba de LOTES_BENEFICIADOS mapeia pra uma UBS. As colunas de cada aba
+# já mudaram de posição mais de uma vez sem aviso (alguém insere/remove
+# colunas na planilha do Drive de tempos em tempos) — por isso, em vez de
+# fixar índices de coluna à mão (que quebravam silenciosamente a cada
+# reformatação), o parser abaixo relê o cabeçalho de cada aba a cada execução
+# e descobre sozinho onde está cada coluna, pelo texto do rótulo (CULTIVAR,
+# CAT., PMS etc.), que é a única coisa que nunca mudou nos arquivos vistos.
+LAYOUT_BENEF = {
+    "SOJA 25-26": "SCV",
+    "CAMBAÍ":     "CAMBAÍ",
+    "SIMÃO":      "SIMÃO",
+    "GIOVELLI":   "GIOVELLI",
+    "CERENNA":    "CERENNA",
+}
+
+HEADER_LABELS_BENEF = {
+    "cv":   ["CULTIVAR"],
+    "cat":  ["CAT.", "CAT"],
+    "pen":  ["PEN.", "PEN"],
+    "pms":  ["PMS"],
+    "peso": ["PESO"],
+    "bags": ["N° BB", "N°BB", "QUANT BB", "QUANTIDADE"],
+}
+
+CV_INVALIDOS = {
+    "CULTIVAR", "DATA", "SAFRA", "CAT.", "N° BB", "QUANTIDADE", "QUANT BB",
+    "LOTE", "PEN.", "PMS", "EMBALAGEM", "PESO", "LOCALIZAÇÃO",
+    "STATUS", "OBSERVAÇÕES",
+}
+
+
+def _achar_cabecalho_benef(ws, max_linhas_busca=8):
+    """Procura, nas primeiras linhas da aba, a linha de cabeçalho (CULTIVAR,
+    CAT., PMS etc.) e devolve (primeira_linha_de_dados, {campo: coluna}).
+    Devolve None se não achar nada parecido com um cabeçalho conhecido."""
+    for r in range(1, max_linhas_busca + 1):
+        valores = {}
+        for c in range(1, ws.max_column + 1):
+            v = ws.cell(r, c).value
+            if isinstance(v, str) and v.strip():
+                valores[v.strip().upper()] = c
+        if "CULTIVAR" not in valores:
+            continue
+        cols = {}
+        for campo, rotulos in HEADER_LABELS_BENEF.items():
+            for rotulo in rotulos:
+                if rotulo in valores:
+                    cols[campo] = valores[rotulo]
+                    break
+        if "cv" in cols and "bags" in cols:
+            return r + 1, cols
+    return None
+
+
+def parse_benef(buf):
+    # data_only=True: algumas abas (ex.: CAMBAÍ) guardam o "peso do bag" como
+    # fórmula (=G3*5) em vez de número fixo. Sem isso, o openpyxl devolve o
+    # texto da fórmula em vez do resultado, e a linha inteira era descartada
+    # silenciosamente por não conseguir converter pra número.
+    wb = openpyxl.load_workbook(buf, data_only=True)
+    agrupado = defaultdict(lambda: {"bags": 0, "kg": 0.0, "pms_sum": 0.0, "pms_cnt": 0})
+
+    for aba, ubs in LAYOUT_BENEF.items():
+        if aba not in wb.sheetnames:
+            log(f"  aviso: aba '{aba}' não encontrada — ignorando")
+            continue
+
+        ws = wb[aba]
+        achado = _achar_cabecalho_benef(ws)
+        if achado is None:
+            log(f"  aviso: aba '{aba}' — não encontrei o cabeçalho (CULTIVAR / "
+                f"N° BB) nas primeiras linhas; aba ignorada nesta execução")
+            continue
+        linha0, cols = achado
+        c_cv, c_bags = cols["cv"], cols["bags"]
+        c_cat, c_pen = cols.get("cat"), cols.get("pen")
+        c_pms, c_peso = cols.get("pms"), cols.get("peso")
+
+        for r in range(linha0, ws.max_row + 1):
+            cv = ws.cell(r, c_cv).value
+            if not cv or isinstance(cv, (int, float)):
+                continue  # célula vazia ou linha de rótulo/rodapé (totais etc.)
+            cv = str(cv).strip()
+            if cv in CV_INVALIDOS or "PARA SEMENTES" in cv or "SEMENTES COM VIGOR" in cv:
+                continue
+            cv = _BENEF_ALIASES_UP.get(cv.upper(), cv)
+
+            bags = to_float(ws.cell(r, c_bags).value)
+            if not bags or bags <= 0:
+                continue
+            bags = int(bags)
+
+            # PMS: prefere a coluna "PMS" direto; se vier vazia (ou for uma
+            # fórmula que não resolveu), cai pro "PESO" (peso do bag) / 5.
+            pms = to_float(ws.cell(r, c_pms).value) if c_pms else None
+            if not pms and c_peso:
+                peso = to_float(ws.cell(r, c_peso).value)
+                pms = peso / 5 if peso else None
+            if not pms:
+                continue
+
+            pen_raw = ws.cell(r, c_pen).value if c_pen else None
+            pen = "P1" if pen_raw and "P1" in str(pen_raw).upper() else "P2"
+            cat_raw = ws.cell(r, c_cat).value if c_cat else None
+            cat = str(cat_raw).strip() if cat_raw else "C2"
+
+            k = agrupado[(cv, ubs, cat, pen)]
+            k["bags"]    += bags
+            k["kg"]      += bags * pms * 5
+            k["pms_sum"] += pms * bags
+            k["pms_cnt"] += bags
+
+    # consolidar por (cultivar, ubs)
+    por_cv_ubs = defaultdict(lambda: defaultdict(
+        lambda: {"bags": 0, "kg": 0.0, "pms_sum": 0.0, "pms_cnt": 0}
+    ))
+    for (cv, ubs, cat, pen), v in agrupado.items():
+        d = por_cv_ubs[(cv, ubs)][(cat, pen)]
+        for campo in ("bags", "kg", "pms_sum", "pms_cnt"):
+            d[campo] += v[campo]
+
+    benef = []
+    for (cv, ubs), detalhes in por_cv_ubs.items():
+        detail = []
+        p1_s = p1_n = p2_s = p2_n = 0
+        for (cat, pen), v in sorted(detalhes.items()):
+            if v["bags"] == 0:
+                continue
+            detail.append({
+                "categoria": cat, "peneira": pen,
+                "bags": v["bags"], "kg": round(v["kg"]),
+            })
+            if pen == "P1":
+                p1_s += v["pms_sum"]; p1_n += v["pms_cnt"]
+            else:
+                p2_s += v["pms_sum"]; p2_n += v["pms_cnt"]
+
+        total = sum(d["bags"] for d in detail)
+        if total == 0:
+            continue
+
+        benef.append({
+            "cultivar": cv, "ubs": ubs,
+            "bags_total": total,
+            "kg_total": sum(d["kg"] for d in detail),
+            "bags_p1": sum(d["bags"] for d in detail if d["peneira"] == "P1"),
+            "bags_p2": sum(d["bags"] for d in detail if d["peneira"] == "P2"),
+            "pms_todos_p1": round(p1_s / p1_n, 1) if p1_n else None,
+            "pms_todos_p2": round(p2_s / p2_n, 1) if p2_n else None,
+            "detail": detail,
+        })
+
+    benef.sort(key=lambda x: -x["kg_total"])
+    return benef
+
+
+# ---------------------------------------------------------------- injeção
+
+def js(dados):
+    return json.dumps(dados, ensure_ascii=False, separators=(",", ":"))
+
+
+# Mesma ordem de classificação já usada em outros dois lugares do projeto
+# (a tabela de composição do e-mail de notificação, mais abaixo neste arquivo,
+# e o array `ranks` usado pelo dashboard em `renderAprovacaoPanel`): do melhor
+# para o pior. Não existe hoje uma constante central para isso — esta lista
+# deriva exatamente da ordem já adotada nesses dois pontos, para não inventar
+# um critério novo.
+RANKING_ORDEM = ["A", "B", "BV", "C", "D", "X"]
+
+
+def detectar_mudancas_ranking(lots_novos, lots_antigos):
+    """Compara o ranking de cada lote entre o estado publicado antes desta
+    execução (lots_antigos, lido do banco ANTES de ser sobrescrito)
+    e o estado recém-calculado agora (lots_novos).
+
+    Associa os registros por (lote, cultivar) — nunca por posição no array,
+    já que a ordem pode mudar entre atualizações. Só entra no resultado
+    quando o ranking realmente muda; lotes novos (sem registro anterior) e
+    lotes que somem do dataset não contam como mudança de classificação.
+    """
+    posicao = {r: i for i, r in enumerate(RANKING_ORDEM)}
+    ranking_anterior_por_chave = {
+        (l.get("lote"), l.get("cultivar")): l.get("ranking")
+        for l in lots_antigos if l.get("lote")
+    }
+
+    subiram, cairam = [], []
+    for l in lots_novos:
+        lote = l.get("lote")
+        if not lote:
+            continue
+        chave = (lote, l.get("cultivar"))
+        rank_anterior = ranking_anterior_por_chave.get(chave)
+        rank_atual = l.get("ranking")
+
+        if rank_anterior is None:
+            continue  # lote novo — sem estado anterior, não é mudança de ranking
+        if rank_anterior == rank_atual:
+            continue  # classificação final igual, mesmo que germ/vigor oficiais tenham mudado
+        if rank_anterior not in posicao or rank_atual not in posicao:
+            continue  # ranking fora do vocabulário conhecido — ignora com segurança
+
+        item = {"lote": lote, "cultivar": l.get("cultivar"), "de": rank_anterior, "para": rank_atual}
+        if posicao[rank_atual] < posicao[rank_anterior]:
+            subiram.append(item)
+        else:
+            cairam.append(item)
+
+    return {
+        "subiram": subiram,
+        "cairam": cairam,
+        "total_subiram": len(subiram),
+        "total_cairam": len(cairam),
+    }
+
+
+def atualizar_dados(lots, summary, pms_cv, comprados, benef, nosso_plantio, inverno=None):
+    """Mesma lógica do antigo atualizar_html(), mas o "estado anterior" vem
+    do banco protegido e o resultado é gravado lá, não no index.html."""
+    destino = store.conectar()
+    meta_atual, publicado = store.ler_conjuntos(destino)
+    if not publicado:
+        raise SystemExit(
+            "ERRO: o banco ainda está vazio. Rode antes a migração inicial "
+            "(scripts/migrar_do_html.py) para levar os dados atuais do dashboard "
+            "antigo — histórico, TZ, campos SIGEF etc. — para o banco.")
+
+    # identificador estável de cada lote (Central de Lotes, TSI, RASTREL...)
+    store.aplicar_lot_ids(lots, store.SAFRA_VERAO)
+    store.aplicar_lot_ids(comprados, store.SAFRA_VERAO)
+
+    # estado anterior — usado para montar o resumo do e-mail e para detectar
+    # mudanças de ranking (MUDANCAS_RECENTES): é o que estava publicado antes
+    # desta execução.
+    global ESTADO_ANTERIOR
+    ESTADO_ANTERIOR = {
+        "lots": publicado.get("LOTS", []),
+        "summary": publicado.get("SUMMARY", []),
+        "comprados": publicado.get("LOTES_COMPRADOS", []),
+        "benef": publicado.get("BENEF", []),
+    }
+
+    mudancas_ranking = detectar_mudancas_ranking(lots, ESTADO_ANTERIOR["lots"])
+    log_detalhe(
+        f"  mudanças de ranking: {mudancas_ranking['total_subiram']} subiram · "
+        f"{mudancas_ranking['total_cairam']} caíram"
+    )
+
+    novos = {}
+    # guarda o SUMMARY atual como SUMMARY_PREV (alimenta o botão "Δ anterior")
+    if "SUMMARY" in publicado:
+        novos["SUMMARY_PREV"] = publicado["SUMMARY"]
+
+    novos["LOTS"] = lots
+    novos["MUDANCAS_RECENTES"] = mudancas_ranking
+    novos["SUMMARY"] = summary
+    novos["PMS_CV"] = pms_cv
+    novos["LOTES_COMPRADOS"] = comprados
+    novos["NOSSO_PLANTIO"] = nosso_plantio
+    if benef is None:
+        log("  BENEF: preservado (planilha não informada)")
+    else:
+        novos["BENEF"] = benef
+
+    if inverno is None:
+        log("  Inverno: preservado (planilha não informada)")
+    else:
+        store.aplicar_lot_ids(inverno["lots"], store.SAFRA_INVERNO)
+        novos["LOTS_INVERNO"] = inverno["lots"]
+        novos["NOSSO_PLANTIO_INVERNO"] = inverno["colheita"]
+        novos["LOTES_COMPRADOS_INVERNO"] = inverno["comprados"]
+        novos["CV_META_INVERNO"] = inverno["cv_meta"]
+        if inverno.get("benef") is not None:
+            novos["BENEF_INVERNO"] = inverno["benef"]
+        else:
+            log("  BENEF_INVERNO: preservado (planilha de beneficiados do Inverno ainda não existe)")
+
+    # diagnóstico da safra — narrativa gerada a partir dos dados desta execução
+    novos["DIAG_DATA"] = montar_diagnostico(lots, summary)
+
+    # histórico de aprovação
+    total = len(lots)
+    aprov = sum(1 for l in lots if l["ranking"] in APROVADOS)
+    cont = defaultdict(int)
+    for l in lots:
+        cont[l["ranking"]] += 1
+
+    ponto = {
+        "data": HOJE,
+        "rank_A": cont["A"], "rank_B": cont["B"], "rank_BV": cont["BV"],
+        "rank_C": cont["C"], "rank_D": cont["D"], "rank_X": cont["X"],
+        "total": total,
+        "pctAprov": round(aprov / total * 100, 1) if total else 0,
+    }
+
+    if "HISTORICO_APROVACAO" in publicado:
+        hist = json.loads(json.dumps(publicado["HISTORICO_APROVACAO"]))
+        chaves = ["rank_A", "rank_B", "rank_BV", "rank_C", "rank_D", "rank_X", "total"]
+
+        def igual(p):
+            return all(p.get(k) == ponto[k] for k in chaves)
+
+        if any(igual(p) for p in hist):
+            for p in hist:
+                if igual(p):
+                    p["data"] = HOJE
+            log("  histórico: composição igual, data atualizada")
+        else:
+            hist.append(ponto)
+            log("  histórico: novo ponto")
+        novos["HISTORICO_APROVACAO"] = hist
+
+    mudaram = store.publicar(destino, novos, CARIMBO_HEADER, meta_atual=meta_atual)
+    log(f"  banco protegido: {len(mudaram)} conjunto(s) atualizado(s)"
+        + (f" — {', '.join(mudaram)}" if mudaram else " — nada mudou"))
+
+    # o workflow usa isto para decidir se manda o e-mail de resumo
+    saida = os.environ.get("GITHUB_OUTPUT")
+    if saida:
+        dados_mudaram = [n for n in mudaram if n not in ("SUMMARY_PREV", "HISTORICO_APROVACAO", "DIAG_DATA")]
+        with open(saida, "a", encoding="utf-8") as f:
+            f.write(f"publicou={'true' if dados_mudaram else 'false'}\n")
+
+    return total, aprov, dict(cont)
+
+
+def cv_meta_inverno_publicado():
+    """CV_META_INVERNO já publicado (preserva obtentor cadastrado)."""
+    try:
+        _, publicado = store.ler_conjuntos(store.conectar())
+        return publicado.get("CV_META_INVERNO", {}) or {}
+    except SystemExit:
+        return {}
+
+
+# ---------------------------------------------------------------- resumo
+
+ESTADO_ANTERIOR = {}
+
+ROTULO_RANK = {
+    "A": "Ótimo", "B": "Bom", "C": "Condicional",
+    "BV": "Cond. Vigor", "D": "Ruim", "X": "Pendente",
+}
+COR_RANK = {
+    "A": "#16A34A", "B": "#2563EB", "C": "#D97706",
+    "BV": "#D97706", "D": "#DC2626", "X": "#64748B",
+}
+
+
+def contar_ranks(lista):
+    c = defaultdict(int)
+    for l in lista:
+        c[l.get("ranking")] += 1
+    return c
+
+
+def montar_resumo(lots, summary, comprados, benef):
+    """Compara o estado anterior com o novo e devolve (assunto, corpo_html, mudou)."""
+    ant = ESTADO_ANTERIOR
+    lots_ant = ant.get("lots", [])
+
+    # --- números gerais ---
+    total_novo, total_ant = len(lots), len(lots_ant)
+    ap_novo = sum(1 for l in lots if l["ranking"] in APROVADOS)
+    ap_ant  = sum(1 for l in lots_ant if l.get("ranking") in APROVADOS)
+    pct_novo = round(ap_novo / total_novo * 100, 1) if total_novo else 0
+    pct_ant  = round(ap_ant / total_ant * 100, 1) if total_ant else 0
+
+    c_novo, c_ant = contar_ranks(lots), contar_ranks(lots_ant)
+
+    # --- lotes novos e mudanças de classificação ---
+    por_lote_ant = {l.get("lote"): l for l in lots_ant if l.get("lote")}
+    novos, mudaram = [], []
+    for l in lots:
+        chave = l.get("lote")
+        if not chave:
+            continue
+        anterior = por_lote_ant.get(chave)
+        if anterior is None:
+            novos.append(l)
+        elif anterior.get("ranking") != l["ranking"]:
+            mudaram.append((l, anterior.get("ranking")))
+
+    # --- comprados e beneficiamento ---
+    comp_ant = ant.get("comprados", [])
+    bags_comp_novo = sum(c.get("bags") or 0 for c in comprados)
+    bags_comp_ant  = sum(c.get("bags") or 0 for c in comp_ant)
+
+    ben_ant = ant.get("benef", [])
+    bags_ben_novo = sum(b.get("bags_total") or 0 for b in benef) if benef is not None else None
+    bags_ben_ant  = sum(b.get("bags_total") or 0 for b in ben_ant)
+
+    mudou = bool(
+        novos or mudaram
+        or total_novo != total_ant
+        or len(comprados) != len(comp_ant)
+        or bags_comp_novo != bags_comp_ant
+        or (bags_ben_novo is not None and bags_ben_novo != bags_ben_ant)
+    )
+
+    # ---------------- montagem do HTML ----------------
+    def seta(d, bom_subir=True):
+        if d == 0:
+            return '<span style="color:#94A3B8;">–</span>'
+        cor = ("#16A34A" if d > 0 else "#DC2626") if bom_subir else ("#DC2626" if d > 0 else "#16A34A")
+        return f'<span style="color:{cor};font-weight:700;">{"+" if d > 0 else ""}{d}</span>'
+
+    d_pct = round(pct_novo - pct_ant, 1)
+    cor_pct = "#16A34A" if d_pct > 0 else ("#DC2626" if d_pct < 0 else "#64748B")
+    txt_pct = f'{"+" if d_pct > 0 else ""}{d_pct} pp' if d_pct else "sem variação"
+
+    linhas_rank = ""
+    for r in ["A", "B", "BV", "C", "D", "X"]:
+        n, a = c_novo.get(r, 0), c_ant.get(r, 0)
+        if n == 0 and a == 0:
+            continue
+        bom = r in APROVADOS
+        linhas_rank += (
+            f'<tr>'
+            f'<td style="padding:7px 10px;border-bottom:1px solid #E2E8F0;">'
+            f'<b style="color:{COR_RANK[r]};">{r}</b> '
+            f'<span style="color:#64748B;font-size:12px;">{ROTULO_RANK[r]}</span></td>'
+            f'<td style="padding:7px 10px;border-bottom:1px solid #E2E8F0;text-align:right;color:#64748B;">{a}</td>'
+            f'<td style="padding:7px 10px;border-bottom:1px solid #E2E8F0;text-align:right;font-weight:700;">{n}</td>'
+            f'<td style="padding:7px 10px;border-bottom:1px solid #E2E8F0;text-align:right;">{seta(n - a, bom)}</td>'
+            f'</tr>'
+        )
+
+    blocos = ""
+
+    if novos:
+        porcv = defaultdict(int)
+        for l in novos:
+            porcv[l.get("cultivar") or "?"] += 1
+        itens = " · ".join(f"{cv} ({q})" for cv, q in sorted(porcv.items(), key=lambda x: -x[1]))
+        blocos += (
+            f'<div style="margin-top:22px;">'
+            f'<div style="font-size:13px;font-weight:700;color:#0F172A;margin-bottom:6px;">'
+            f'{len(novos)} lote{"s" if len(novos) != 1 else ""} novo{"s" if len(novos) != 1 else ""}</div>'
+            f'<div style="font-size:13px;color:#475569;line-height:1.6;">{itens}</div>'
+            f'</div>'
+        )
+
+    if mudaram:
+        linhas = ""
+        for l, antes in mudaram[:20]:
+            linhas += (
+                f'<tr>'
+                f'<td style="padding:5px 10px 5px 0;font-family:monospace;font-size:12px;">{l.get("lote")}</td>'
+                f'<td style="padding:5px 10px 5px 0;font-size:12px;color:#475569;">{l.get("cultivar") or ""}</td>'
+                f'<td style="padding:5px 0;font-size:12px;">'
+                f'<span style="color:{COR_RANK.get(antes, "#64748B")};">{antes or "—"}</span>'
+                f'<span style="color:#94A3B8;"> &rarr; </span>'
+                f'<b style="color:{COR_RANK.get(l["ranking"], "#64748B")};">{l["ranking"]}</b>'
+                f'</td></tr>'
+            )
+        resto = (
+            f'<div style="font-size:12px;color:#94A3B8;margin-top:6px;">'
+            f'e mais {len(mudaram) - 20} lote(s)</div>'
+        ) if len(mudaram) > 20 else ""
+        blocos += (
+            f'<div style="margin-top:22px;">'
+            f'<div style="font-size:13px;font-weight:700;color:#0F172A;margin-bottom:6px;">'
+            f'{len(mudaram)} lote{"s" if len(mudaram) != 1 else ""} mudou de classificação</div>'
+            f'<table style="border-collapse:collapse;">{linhas}</table>{resto}'
+            f'</div>'
+        )
+
+    extras = ""
+    if len(comprados) != len(comp_ant) or bags_comp_novo != bags_comp_ant:
+        extras += (
+            f'<li style="margin-bottom:4px;">Lotes comprados: <b>{len(comprados)}</b> '
+            f'({seta(len(comprados) - len(comp_ant))}) · '
+            f'<b>{bags_comp_novo:,}</b> bags ({seta(bags_comp_novo - bags_comp_ant)})</li>'
+        ).replace(",", ".")
+    if bags_ben_novo is not None and bags_ben_novo != bags_ben_ant:
+        extras += (
+            f'<li style="margin-bottom:4px;">Beneficiamento: <b>{bags_ben_novo:,}</b> bags '
+            f'({seta(bags_ben_novo - bags_ben_ant)})</li>'
+        ).replace(",", ".")
+    if extras:
+        blocos += (
+            f'<div style="margin-top:22px;">'
+            f'<div style="font-size:13px;font-weight:700;color:#0F172A;margin-bottom:6px;">Outras abas</div>'
+            f'<ul style="margin:0;padding-left:18px;font-size:13px;color:#475569;">{extras}</ul>'
+            f'</div>'
+        )
+
+    if not blocos:
+        blocos = (
+            '<div style="margin-top:22px;font-size:13px;color:#64748B;">'
+            'Os totais permanecem iguais — apenas valores internos de análise foram revisados.'
+            '</div>'
+        )
+
+    corpo = f"""<!DOCTYPE html>
+<html><body style="margin:0;padding:24px;background:#F1F5F9;font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif;">
+<div style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;border:1px solid #E2E8F0;">
+
+  <div style="background:#0F172A;padding:20px 24px;">
+    <div style="color:#fff;font-size:17px;font-weight:800;">Gestão de Qualidade — Sementes com Vigor</div>
+    <div style="color:#94A3B8;font-size:13px;margin-top:3px;">Dashboard atualizado em {HOJE}</div>
+  </div>
+
+  <div style="padding:24px;">
+
+    <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
+      <tr>
+        <td style="padding:12px;background:#F8FAFC;border-radius:8px;width:50%;">
+          <div style="font-size:11px;color:#64748B;text-transform:uppercase;letter-spacing:.5px;">Taxa de aprovação</div>
+          <div style="font-size:26px;font-weight:800;color:#0F172A;margin-top:2px;">{pct_novo}%</div>
+          <div style="font-size:12px;color:{cor_pct};margin-top:2px;">{txt_pct}</div>
+        </td>
+        <td style="width:10px;"></td>
+        <td style="padding:12px;background:#F8FAFC;border-radius:8px;width:50%;">
+          <div style="font-size:11px;color:#64748B;text-transform:uppercase;letter-spacing:.5px;">Lotes analisados</div>
+          <div style="font-size:26px;font-weight:800;color:#0F172A;margin-top:2px;">{total_novo}</div>
+          <div style="font-size:12px;color:#64748B;margin-top:2px;">{ap_novo} aprovados</div>
+        </td>
+      </tr>
+    </table>
+
+    <div style="font-size:13px;font-weight:700;color:#0F172A;margin-bottom:8px;">Composição por classificação</div>
+    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <tr style="background:#F8FAFC;">
+        <th style="padding:7px 10px;text-align:left;font-size:11px;color:#64748B;font-weight:600;">Classificação</th>
+        <th style="padding:7px 10px;text-align:right;font-size:11px;color:#64748B;font-weight:600;">Antes</th>
+        <th style="padding:7px 10px;text-align:right;font-size:11px;color:#64748B;font-weight:600;">Agora</th>
+        <th style="padding:7px 10px;text-align:right;font-size:11px;color:#64748B;font-weight:600;">Var.</th>
+      </tr>
+      {linhas_rank}
+    </table>
+
+    {blocos}
+
+    <div style="margin-top:26px;text-align:center;">
+      <a href="https://laisetimbira-hue.github.io/dashboard-soja-2526/"
+         style="display:inline-block;background:#2563EB;color:#fff;text-decoration:none;
+                padding:11px 26px;border-radius:8px;font-size:14px;font-weight:700;">
+        Abrir o dashboard
+      </a>
+    </div>
+
+  </div>
+
+  <div style="padding:14px 24px;background:#F8FAFC;border-top:1px solid #E2E8F0;
+              font-size:11px;color:#94A3B8;text-align:center;">
+    Mensagem automática · gerada a partir da planilha no Google Drive
+  </div>
+
+</div></body></html>"""
+
+    sinal = f"{'+' if d_pct > 0 else ''}{d_pct}pp" if d_pct else "estável"
+    assunto = f"Dashboard atualizado — {pct_novo}% aprovação ({sinal}) · {total_novo} lotes · {HOJE}"
+
+    return assunto, corpo, mudou
+
+
+def gravar_resumo(assunto, corpo, mudou):
+    with open("resumo_email.html", "w", encoding="utf-8") as f:
+        f.write(corpo)
+    saida = os.environ.get("GITHUB_OUTPUT")
+    if saida:
+        with open(saida, "a", encoding="utf-8") as f:
+            f.write(f"assunto={assunto}\n")
+            f.write(f"mudou={'true' if mudou else 'false'}\n")
+    log(f"  resumo gerado · mudanças relevantes: {'sim' if mudou else 'não'}")
+
+
+# ---------------------------------------------------------------- main
+
+def main():
+    log("Baixando planilhas do Drive...")
+    buf_analises = baixar(ID_ANALISES, "ANALISES")
+    buf_benef    = baixar(ID_BENEF, "BENEFICIADOS", obrigatorio=False)
+
+    log("\nProcessando ANALISES...")
+    lots = parse_analises(buf_analises)
+    summary, pms_cv = montar_summary(lots)
+
+    buf_analises.seek(0)
+    comprados = parse_comprados(buf_analises)
+    buf_analises.seek(0)
+    nosso_plantio = parse_nosso_plantio(buf_analises)
+    log_detalhe(f"  {len(lots)} lotes · {len(comprados)} comprados · {len(nosso_plantio)} nosso plantio")
+
+    if buf_benef is None:
+        benef = None
+        log("\nBENEFICIADOS: pulado — o BENEF já publicado no banco será preservado")
+    else:
+        log("\nProcessando BENEFICIADOS...")
+        benef = parse_benef(buf_benef)
+        log_detalhe(f"  {len(benef)} entradas · {sum(b['bags_total'] for b in benef):,} bags")
+
+    log("\nBaixando planilhas do Inverno 26/26 (opcional)...")
+    buf_analises_inverno = baixar(ID_ANALISES_INVERNO, "ANALISES_INVERNO", obrigatorio=False)
+    inverno = None
+    if buf_analises_inverno is None:
+        log("  Inverno: pulado — planilha ainda não configurada")
+    else:
+        # qualquer erro aqui (aba nova, coluna renomeada etc.) não pode
+        # derrubar a atualização da soja — só pula o Inverno nesta execução
+        # e preserva o que já estava publicado, igual ao BENEF.
+        try:
+            log("  Processando Inverno...")
+            lots_inverno = parse_inverno_lotes(buf_analises_inverno)
+            buf_analises_inverno.seek(0)
+            colheita_inverno = parse_inverno_colheita(buf_analises_inverno, lots_inverno)
+            buf_analises_inverno.seek(0)
+            comprados_inverno = parse_inverno_comprados(buf_analises_inverno, lots_inverno)
+
+            cv_meta_atual_inverno = cv_meta_inverno_publicado()
+            cv_meta_inverno = montar_cv_meta_inverno(lots_inverno, cv_meta_atual_inverno)
+
+            # a planilha de Beneficiados do Inverno ainda não existe — quando
+            # existir, isso aqui precisa de um parser próprio (a estrutura
+            # dela ainda não foi vista, não dá pra reaproveitar o parse_benef
+            # da soja às cegas). Por ora fica sempre None = preservado.
+            benef_inverno = None
+            if ID_BENEF_INVERNO:
+                log("  aviso: ID_BENEF_INVERNO configurado, mas ainda não há parser "
+                    "pra essa planilha — BENEF_INVERNO será preservado")
+
+            inverno = {
+                "lots": lots_inverno, "colheita": colheita_inverno,
+                "comprados": comprados_inverno, "cv_meta": cv_meta_inverno,
+                "benef": benef_inverno,
+            }
+            log_detalhe(f"  Inverno: {len(lots_inverno)} lotes · {len(colheita_inverno)} colheita · "
+                f"{len(comprados_inverno)} comprados · {len(cv_meta_inverno)} cultivares")
+        except Exception as e:
+            log(f"  aviso: Inverno falhou nesta execução ({type(e).__name__}: {e}) — "
+                f"dados de Inverno já publicados serão preservados")
+            inverno = None
+
+    log("\nGravando no banco protegido...")
+    total, aprov, cont = atualizar_dados(lots, summary, pms_cv, comprados, benef, nosso_plantio, inverno)
+
+    log("\nMontando resumo para o e-mail...")
+    assunto, corpo, mudou = montar_resumo(lots, summary, comprados, benef)
+    gravar_resumo(assunto, corpo, mudou)
+
+    pct = round(aprov / total * 100, 1) if total else 0
+    log(f"\n{'='*46}")
+    log(f"  {HOJE}")
+    log_detalhe(f"  {total} lotes · {aprov} aprovados ({pct}%)")
+    log_detalhe(f"  {cont}")
+    log(f"{'='*46}")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except SystemExit:
+        raise
+    except Exception as e:
+        log(f"\nFALHOU: {type(e).__name__}: {e}")
+        sys.exit(1)
