@@ -1,17 +1,18 @@
 rules_version = '2';
 
 // =====================================================================
-// PROPOSTA — regras do RASTREL (projeto rastreabilidade-a511a)
-// NÃO PUBLICADA. Testada no emulador (tests/regras-modulos.test.mjs).
+// Regras do RASTREL (projeto rastreabilidade-a511a)
 // Substitui: match /{document=**} { allow read, write: if request.auth != null; }
+// Testadas no emulador: seedmax-qualidade/tests/regras-*.test.mjs
 //
-// Antes de publicar: criar usuarios/{uid} para cada uma das 4 contas
-// atuais (nome, email, perfil, ativo:true). Sem esse cadastro, a conta
-// perde o acesso.
-// Perfis:
-//   administrador — tudo, inclusive apagar dados e gerenciar usuários
-//   operador      — cria bags, vincula/substitui tag, movimenta, confere carga
-//   visualizador  — só consulta
+// Só entra quem tem users/{uid} com active == true.
+// Perfis: ADMIN (tudo, inclusive apagar e gerenciar usuários),
+//         OPERADOR (operação do dia a dia, sem apagar),
+//         VISUALIZADOR (só consulta).
+// "Apagar todos os dados" (bags, movimentações, cargas): só ADMIN.
+// Histórico (movimentacoes): só recebe registros novos, com usuário e
+// data; registros antigos não podem ser alterados nem apagados
+// (correção/exclusão só ADMIN).
 // =====================================================================
 
 service cloud.firestore {
@@ -19,31 +20,33 @@ service cloud.firestore {
 
     function logado() { return request.auth != null; }
     function cadastro() {
-      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data;
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
     function ativo() {
       return logado()
-        && exists(/databases/$(database)/documents/usuarios/$(request.auth.uid))
-        && cadastro().ativo == true;
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && cadastro().active == true;
     }
-    function temPerfil(perfis) { return ativo() && cadastro().perfil in perfis; }
-    function admin() { return temPerfil(['administrador']); }
-    function opera() { return temPerfil(['administrador', 'operador']); }
+    function temPerfil(perfis) { return ativo() && cadastro().role in perfis; }
+    function admin() { return temPerfil(['ADMIN']); }
+    function opera() { return temPerfil(['ADMIN', 'OPERADOR']); }
 
     function usuarioValido(u) {
-      return u.keys().hasAll(['nome', 'email', 'perfil', 'ativo'])
-        && u.nome is string && u.email is string && u.ativo is bool
-        && u.perfil in ['administrador', 'operador', 'visualizador'];
+      return u.keys().hasAll(['name', 'email', 'role', 'active'])
+        && u.keys().hasOnly(['name', 'email', 'role', 'active', 'createdAt', 'updatedAt'])
+        && u.name is string && u.email is string && u.active is bool
+        && u.role in ['ADMIN', 'OPERADOR', 'VISUALIZADOR'];
     }
 
-    match /usuarios/{uid} {
+    // autorização: cada um lê o próprio cadastro; só ADMIN gerencia.
+    // Ninguém consegue se cadastrar ou se promover sozinho.
+    match /users/{uid} {
       allow get: if logado() && (request.auth.uid == uid || admin());
       allow list: if admin();
       allow create, update: if admin() && usuarioValido(request.resource.data);
       allow delete: if admin() && uid != request.auth.uid;
     }
 
-    // bags: operador cria e atualiza; apagar (inclui "apagar tudo") só administrador
     match /bags/{id} {
       allow read: if ativo();
       allow create: if opera() && request.resource.data.lote is string;
@@ -51,23 +54,22 @@ service cloud.firestore {
       allow delete: if admin();
     }
 
-    // tags NFC: registro de unicidade. Tag criada nunca é apagada por operador
-    // (uma tag não pode ser reutilizada); marcar como substituída é permitido.
+    // tags NFC: registro de unicidade; tag nunca é apagada por operador
     match /epcs/{epc} {
       allow read: if ativo();
-      allow create: if opera() && request.resource.data.epc == epc;
-      allow update: if opera() && request.resource.data.epc == epc;
+      allow create, update: if opera() && request.resource.data.epc == epc;
       allow delete: if admin();
     }
 
-    // eventos dos bags: só acrescenta; corrigir/apagar só administrador
     match /movimentacoes/{id} {
       allow read: if ativo();
-      allow create: if opera();
+      allow create: if opera()
+        && request.resource.data.tipo_evento is string
+        && request.resource.data.operador is string
+        && request.resource.data.criado_em is timestamp;
       allow update, delete: if admin();
     }
 
-    // ordens de carga (expedição) e bags conferidos em cada uma
     match /pedidos_carga/{oc} {
       allow read: if ativo();
       allow create, update: if opera();
@@ -79,7 +81,6 @@ service cloud.firestore {
       }
     }
 
-    // mapa dos armazéns (Armazém 2 e Garagem)
     match /mapa/{doc} {
       allow read: if ativo();
       allow write: if opera();

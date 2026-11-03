@@ -1,17 +1,18 @@
 rules_version = '2';
 
 // =====================================================================
-// PROPOSTA — regras do Estoque TSI (projeto estoquetsi)
-// NÃO PUBLICADA. Testada no emulador (tests/regras-modulos.test.mjs).
+// Regras do Estoque TSI (projeto estoquetsi)
 // Substitui: match /{document=**} { allow read, write: if request.auth != null; }
+// Testadas no emulador: seedmax-qualidade/tests/regras-*.test.mjs
 //
-// Antes de publicar: criar usuarios/{uid} para cada uma das 4 contas
-// atuais (nome, email, perfil, ativo:true). Sem esse cadastro, a conta
-// perde o acesso.
-// Perfis (os mesmos nomes que o app do TSI já usa):
-//   administrador — tudo, inclusive apagar e gerenciar usuários
-//   operador      — lança e edita produtos, receitas, ordens, movimentações
-//   visualizador  — só consulta
+// Só entra quem tem users/{uid} com active == true.
+// Perfis: ADMIN (tudo, inclusive apagar e gerenciar usuários),
+//         OPERADOR (operação do dia a dia, sem apagar),
+//         VISUALIZADOR (só consulta).
+// "Excluir ordem", "Desfazer acerto" e "ZERAR" apagam registros: só ADMIN.
+// Histórico (movimentacoes): só recebe registros novos, com usuário e
+// data; registros antigos não podem ser alterados nem apagados
+// (correção/exclusão só ADMIN).
 // =====================================================================
 
 service cloud.firestore {
@@ -19,62 +20,67 @@ service cloud.firestore {
 
     function logado() { return request.auth != null; }
     function cadastro() {
-      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data;
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
     function ativo() {
       return logado()
-        && exists(/databases/$(database)/documents/usuarios/$(request.auth.uid))
-        && cadastro().ativo == true;
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && cadastro().active == true;
     }
-    function temPerfil(perfis) { return ativo() && cadastro().perfil in perfis; }
-    function admin() { return temPerfil(['administrador']); }
-    function opera() { return temPerfil(['administrador', 'operador']); }
+    function temPerfil(perfis) { return ativo() && cadastro().role in perfis; }
+    function admin() { return temPerfil(['ADMIN']); }
+    function opera() { return temPerfil(['ADMIN', 'OPERADOR']); }
 
     function usuarioValido(u) {
-      return u.keys().hasAll(['nome', 'email', 'perfil', 'ativo'])
-        && u.nome is string && u.email is string && u.ativo is bool
-        && u.perfil in ['administrador', 'operador', 'visualizador'];
+      return u.keys().hasAll(['name', 'email', 'role', 'active'])
+        && u.keys().hasOnly(['name', 'email', 'role', 'active', 'createdAt', 'updatedAt'])
+        && u.name is string && u.email is string && u.active is bool
+        && u.role in ['ADMIN', 'OPERADOR', 'VISUALIZADOR'];
     }
 
-    // cadastro de acesso: cada um lê o seu; só administrador gerencia
-    match /usuarios/{uid} {
+    // autorização: cada um lê o próprio cadastro; só ADMIN gerencia.
+    // Ninguém consegue se cadastrar ou se promover sozinho.
+    match /users/{uid} {
       allow get: if logado() && (request.auth.uid == uid || admin());
       allow list: if admin();
       allow create, update: if admin() && usuarioValido(request.resource.data);
       allow delete: if admin() && uid != request.auth.uid;
     }
 
-    // estoque de produtos de tratamento
+    // coleção antiga do app (tela de usuários escondida): só ADMIN lê
+    match /usuarios/{id} {
+      allow read: if admin();
+      allow write: if false;
+    }
+
     match /produtos/{id} {
       allow read: if ativo();
       allow create, update: if opera();
       allow delete: if admin();
     }
 
-    // receitas (produto + dose por kg)
     match /receitas/{id} {
       allow read: if ativo();
       allow create, update: if opera();
       allow delete: if admin();
     }
 
-    // ordens de tratamento (abertas importadas do PDF, fechadas tratadas)
     match /lotesTratamento/{id} {
       allow read: if ativo();
       allow create, update: if opera();
       allow delete: if admin();
     }
 
-    // histórico de estoque: operador lança; desfazer/apagar só administrador
     match /movimentacoes/{id} {
       allow read: if ativo();
       allow create: if opera()
+        && request.resource.data.tipo in ['entrada', 'saida']
         && request.resource.data.quantidade is number
-        && request.resource.data.tipo in ['entrada', 'saida'];
+        && request.resource.data.responsavel is string
+        && request.resource.data.criadoEm is timestamp;
       allow update, delete: if admin();
     }
 
-    // qualquer outra coleção: fechada
     match /{document=**} {
       allow read, write: if false;
     }
