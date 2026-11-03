@@ -5775,8 +5775,9 @@ function renderCentralKpis() {
 function clicarCardCentral(id) {
   const si = document.getElementById('central-situacao'), dv = document.getElementById('central-div');
   if (id === '') { limparFiltrosCentral(); return; }
-  if (id === '#DIV') { dv.value = (dv.value === 'DIVERGENCIA') ? '' : 'DIVERGENCIA'; }
-  else { si.value = (si.value === id) ? '' : id; }
+  // um card por vez: situação e "com divergência" não se somam (os demais filtros continuam valendo)
+  if (id === '#DIV') { dv.value = (dv.value === 'DIVERGENCIA') ? '' : 'DIVERGENCIA'; si.value = ''; }
+  else { si.value = (si.value === id) ? '' : id; if (dv.value === 'DIVERGENCIA') dv.value = ''; }
   centralVista('lotes');
   filtrarCentral();
 }
