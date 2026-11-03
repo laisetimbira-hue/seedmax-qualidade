@@ -121,6 +121,12 @@ def montar_apelidos(cv_meta):
     return ap
 
 
+def montar_codigos(cv_meta):
+    """{'55I57RSFIPRO': '55I57RSF IPRO', ...} — código da cultivar como a
+    Qualidade escreve, para lotes cuja cultivar veio do TSI/RASTREL ('Zeus')."""
+    return {_sem_acento(c.upper()).replace(" ", ""): c for c in (cv_meta or {})}
+
+
 def montar_nomes(cv_meta):
     """{'55I57RSFIPRO': 'Zeus', ...} — nome comercial para a busca."""
     return {_sem_acento(c.upper()).replace(" ", ""): (i or {}).get("nome")
@@ -317,15 +323,90 @@ def _situacao(q, t, r, tsi_conectado, rastrel_conectado):
     return "PRONTO", f"TSI concluído e {tags} de {int(previstos)} bags com tag."
 
 
-def _diverg(lista, campo, texto, tipo="divergencia", **valores):
-    """tipo: 'divergencia' (dado diferente entre módulos) ou 'aviso'
-    (falta informação, não necessariamente erro)."""
-    lista.append(dict({"campo": campo, "tipo": tipo, "texto": texto},
+# Níveis de alerta (Central V2):
+#   DIVERGENCIA — dois módulos informam dados incompatíveis (ou o lote andou
+#                 com a Qualidade indicando reprovação);
+#   AVISO       — merece atenção, mas não é necessariamente erro;
+#   PENDENCIA   — só falta informação para concluir o fluxo (pendência
+#                 informacional; ex.: aprovado sem ordem TSI identificada).
+NIVEIS = ("DIVERGENCIA", "AVISO", "PENDENCIA")
+
+
+def _diverg(lista, campo, texto, nivel="DIVERGENCIA", codigo=None, **valores):
+    """Registra um alerta. 'tipo' é mantido por compatibilidade com a tela
+    antiga: 'divergencia' só para o nível DIVERGENCIA; o resto é 'aviso'."""
+    assert nivel in NIVEIS
+    lista.append(dict({"campo": campo, "codigo": codigo or campo, "nivel": nivel,
+                       "tipo": "divergencia" if nivel == "DIVERGENCIA" else "aviso", "texto": texto},
                       **{k: v for k, v in valores.items() if v is not None}))
 
 
+def _etapa(estado, texto):
+    assert estado in ("CONCLUIDO", "EM_ANDAMENTO", "PENDENTE", "INDETERMINADO")
+    return {"estado": estado, "texto": texto}
+
+
+def _etapas(q, t, r, tsi_conectado, rastrel_conectado):
+    """Linha do tempo Qualidade → TSI → RASTREL → Expedição.
+    Só usa evidência da própria etapa: uma etapa NUNCA é dada como concluída
+    porque uma etapa posterior existe."""
+    # Qualidade
+    if not q:
+        eq = _etapa("INDETERMINADO", "Lote não encontrado na Gestão de Qualidade.")
+    elif q["status"] == "APROVADO":
+        eq = _etapa("CONCLUIDO", "Aprovado" + (f" (classe {q['classe']})" if q.get("classe") else "") + ".")
+    elif q["status"] == "REPROVADO":
+        eq = _etapa("PENDENTE", "Reprovado — não liberado.")
+    else:
+        eq = _etapa("PENDENTE", ("Condicional" if q["status"] == "CONDICIONAL" else "Em análise / sem aprovação") + ".")
+    # TSI
+    if not tsi_conectado:
+        et = _etapa("INDETERMINADO", "TSI não conectado à Central.")
+    elif t and t["abertas"]:
+        et = _etapa("EM_ANDAMENTO", f"{t['abertas']} ordem(ns) aberta(s) com este lote.")
+    elif t:
+        et = _etapa("CONCLUIDO", f"{t['concluidas']} ordem(ns) concluída(s) com este lote.")
+    elif not q:
+        et = _etapa("INDETERMINADO", "Lote fora da Qualidade e sem ordem TSI que o informe.")
+    elif r:
+        et = _etapa("INDETERMINADO", "Há bags no RASTREL, mas nenhuma ordem TSI informa este lote "
+                                     "(ordens antigas do TSI não registram o lote).")
+    elif q["status"] == "APROVADO":
+        et = _etapa("PENDENTE", "Aprovado; nenhuma ordem TSI identificada ainda.")
+    else:
+        et = _etapa("PENDENTE", "Aguardando liberação da Qualidade.")
+    # RASTREL
+    previstos = q.get("bags") if q else None
+    if not rastrel_conectado:
+        er = _etapa("INDETERMINADO", "RASTREL não conectado à Central.")
+    elif r:
+        if previstos and r["tags"] >= previstos:
+            er = _etapa("CONCLUIDO", f"{r['tags']} de {int(previstos)} bags previstos com tag.")
+        elif previstos:
+            er = _etapa("EM_ANDAMENTO", f"{r['tags']} de {int(previstos)} bags previstos com tag.")
+        else:
+            er = _etapa("INDETERMINADO", f"{r['tags']} bags com tag; a Qualidade não informa os bags previstos.")
+    elif t and not t["abertas"]:
+        er = _etapa("PENDENTE", "TSI concluído; nenhum bag no RASTREL ainda.")
+    else:
+        er = _etapa("PENDENTE", "Nenhum bag deste lote no RASTREL.")
+    # Expedição (só o que o RASTREL informa sobre bags expedidos)
+    if not rastrel_conectado:
+        ee = _etapa("INDETERMINADO", "RASTREL não conectado à Central.")
+    elif not r:
+        ee = _etapa("PENDENTE", "Sem bags no RASTREL.")
+    elif r["expedidos"] == 0:
+        ee = _etapa("PENDENTE", f"Nenhum bag expedido ({r['emEstoque']} em estoque).")
+    elif r["expedidos"] >= r["bags"] and (not previstos or r["expedidos"] >= previstos):
+        ee = _etapa("CONCLUIDO", f"{r['expedidos']} bags expedidos.")
+    else:
+        total = int(previstos) if previstos and previstos > r["bags"] else r["bags"]
+        ee = _etapa("EM_ANDAMENTO", f"{r['expedidos']} de {total} bags expedidos.")
+    return {"qualidade": eq, "tsi": et, "rastrel": er, "expedicao": ee}
+
+
 def consolidar(qualidade, tsi, rastrel, apelidos, carimbo,
-               tsi_conectado=True, rastrel_conectado=True, safra=SAFRA_ATIVA, nomes=None):
+               tsi_conectado=True, rastrel_conectado=True, safra=SAFRA_ATIVA, nomes=None, codigos_cv=None):
     """Junta os três resumos por código de lote → {lotId: documento}."""
     codigos = set(qualidade) | set(tsi or {}) | set(rastrel or {})
     docs = {}
@@ -347,7 +428,8 @@ def consolidar(qualidade, tsi, rastrel, apelidos, carimbo,
             originais |= r["codigosOriginais"]
         estranhos = sorted(o for o in originais if o != code)
         if estranhos:
-            _diverg(div, "lote", "Código escrito de forma diferente: " + ", ".join(repr(e) for e in estranhos))
+            _diverg(div, "lote", "Código escrito de forma diferente: " + ", ".join(repr(e) for e in estranhos),
+                    nivel="AVISO", codigo="codigo_lote")
 
         # ---- cultivar
         cq = cultivar_canonica(q["cultivar"], apelidos) if q else None
@@ -380,7 +462,7 @@ def consolidar(qualidade, tsi, rastrel, apelidos, carimbo,
         if q and t and q.get("pms") and t["pms"]:
             fora = sorted(p for p in t["pms"] if abs(p - q["pms"]) > 0.5)
             if fora:
-                _diverg(div, "pms", "PMS do TSI diferente do PMS de etiqueta da Qualidade",
+                _diverg(div, "pms", "PMS do TSI diferente do PMS de etiqueta da Qualidade", codigo="pms",
                         qualidade=q["pms"], tsi=fora)
 
         # ---- bags
@@ -392,31 +474,38 @@ def consolidar(qualidade, tsi, rastrel, apelidos, carimbo,
                 _diverg(div, "bags", "RASTREL tem mais bags do que a Qualidade registra",
                         qualidade=q["bags"], rastrel=r["bags"])
         if r and r["tags"] < r["bags"]:
-            _diverg(div, "tags", "Bags sem tag NFC no RASTREL", rastrel=f"{r['tags']} de {r['bags']}")
+            _diverg(div, "tags", "Bags sem tag NFC no RASTREL", nivel="PENDENCIA", codigo="bags_sem_tag",
+                    rastrel=f"{r['tags']} de {r['bags']}")
         if r and r["kg"] == 0 and r["bags"]:
-            _diverg(div, "kg", "Bags do RASTREL sem peso", tipo="aviso", rastrel=r["bags"])
+            _diverg(div, "kg", "Bags do RASTREL sem peso", nivel="AVISO", codigo="bags_sem_peso", rastrel=r["bags"])
         elif q and r and q.get("pesoBag") and r["bags"]:
             medio = r["kg"] / r["bags"]
             if abs(medio - q["pesoBag"]) > 0.03 * q["pesoBag"]:
                 _diverg(div, "kg", "Peso médio por bag do RASTREL diferente do peso por bag da Qualidade",
-                        qualidade=q["pesoBag"], rastrel=round(medio, 1))
+                        nivel="AVISO", codigo="peso_bag", qualidade=q["pesoBag"], rastrel=round(medio, 1))
         if q and t and q.get("pesoBag") and t["pesosBag"]:
             fora = sorted(p for p in t["pesosBag"] if abs(p - q["pesoBag"]) > 0.03 * q["pesoBag"])
             if fora:
                 _diverg(div, "kg", "Peso por bag do TSI diferente do peso por bag da Qualidade",
-                        qualidade=q["pesoBag"], tsi=fora)
+                        nivel="AVISO", codigo="peso_bag", qualidade=q["pesoBag"], tsi=fora)
         if q and q["status"] != "APROVADO" and (t or r):
-            _diverg(div, "qualidade", "Lote movimentado sem aprovação na Qualidade",
+            reprovado = q["status"] == "REPROVADO"
+            _diverg(div, "qualidade", ("Lote movimentado com a Qualidade indicando reprovação" if reprovado
+                                       else "Lote movimentado sem aprovação na Qualidade"),
+                    nivel="DIVERGENCIA" if reprovado else "AVISO",
+                    codigo="movimentado_reprovado" if reprovado else "movimentado_sem_aprovacao",
                     qualidade=q["status"], tsi=("tratado" if t else None), rastrel=(f"{r['bags']} bags" if r else None))
 
         # ---- tratamento
         if r:
             trat = _unico(r["tratamentos"])
             if isinstance(trat, list):
-                _diverg(div, "tratamento", "RASTREL tem mais de um tratamento no mesmo lote", rastrel=trat)
+                _diverg(div, "tratamento", "RASTREL tem mais de um tratamento no mesmo lote",
+                        nivel="AVISO", codigo="multiplos_tratamentos", rastrel=trat)
             if not t and tsi_conectado and any(k != "—" for k in r["tratamentos"]):
                 _diverg(div, "tratamento", "RASTREL indica tratamento, mas nenhuma ordem do TSI informa este lote",
-                        tipo="aviso", rastrel=sorted(k for k in r["tratamentos"] if k != "—"))
+                        nivel="AVISO", codigo="tratamento_sem_ordem",
+                        rastrel=sorted(k for k in r["tratamentos"] if k != "—"))
 
         # ---- TSI: identificador gravado pelo próprio TSI (sourceLotId) × o da Central
         if t and t.get("idsDeclarados"):
@@ -424,18 +513,37 @@ def consolidar(qualidade, tsi, rastrel, apelidos, carimbo,
             if outros:
                 _diverg(div, "lotId", "O TSI registrou este lote com outro identificador; na Central é "
                         + lot_id + ("" if q else " (lote não encontrado na Qualidade)"),
-                        tipo="aviso", tsi=outros)
+                        nivel="AVISO", codigo="lotid_diferente", tsi=outros)
 
         # ---- TSI: origem/destino
         if t:
             dests = sorted(t["destinos"])
             treated = dests[0] if len(dests) == 1 else None
             if len(dests) > 1:
-                _diverg(div, "tsi", "Um lote de origem gerou mais de um lote tratado", tsi=dests)
+                _diverg(div, "tsi", "Um lote de origem gerou mais de um lote tratado",
+                        nivel="AVISO", codigo="varios_lotes_tratados", tsi=dests)
         else:
             treated = None
 
+        # ---- pendências informacionais (falta dado para concluir o fluxo; não é erro)
+        if not q:
+            _diverg(div, "qualidade", "Lote não encontrado na Gestão de Qualidade.",
+                    nivel="PENDENCIA", codigo="fora_da_qualidade")
+        if q and q["status"] == "APROVADO" and tsi_conectado and not t:
+            _diverg(div, "tsi", "Aprovado na Qualidade, mas nenhuma ordem TSI informa este lote.",
+                    nivel="PENDENCIA", codigo="aprovado_sem_tsi")
+        if r and not t and tsi_conectado:
+            _diverg(div, "tsi", "Bags no RASTREL, mas nenhuma ordem TSI identificada para este lote.",
+                    nivel="PENDENCIA", codigo="rastrel_sem_tsi")
+        if t and not t["abertas"] and rastrel_conectado and not r:
+            _diverg(div, "rastrel", "TSI concluído, mas nenhum bag deste lote no RASTREL.",
+                    nivel="PENDENCIA", codigo="tsi_sem_rastrel")
+        if q and r and not q.get("bags"):
+            _diverg(div, "bags", "A Qualidade não informa quantos bags são previstos.",
+                    nivel="PENDENCIA", codigo="sem_bags_previstos")
+
         situacao, motivo = _situacao(q, t, r, tsi_conectado, rastrel_conectado)
+        etapas = _etapas(q, t, r, tsi_conectado, rastrel_conectado)
 
         if not tsi_conectado:
             tsi_status = "NÃO CONECTADO"
@@ -498,9 +606,15 @@ def consolidar(qualidade, tsi, rastrel, apelidos, carimbo,
             "modulos": [m for m, v in (("QUALIDADE", q), ("TSI", t), ("RASTREL", r)) if v],
             "situacao": situacao,
             "motivo": motivo,
-            "divergencias": div,
+            "divergencias": div,          # todos os alertas, com "nivel" (DIVERGENCIA/AVISO/PENDENCIA)
+            "alertasPorNivel": {n: sum(1 for d in div if d["nivel"] == n) for n in NIVEIS},
+            "etapas": etapas,
             "presente": True,
         }
+        if doc["cultivar"] and not base.get("cultivar"):
+            # cultivar veio do TSI/RASTREL ('Zeus', '56IX58RSF I2X (TITANIUM)'): usa o código da Qualidade,
+            # para o filtro e o resumo por cultivar juntarem o mesmo material
+            doc["cultivar"] = (codigos_cv or {}).get(cultivar_canonica(doc["cultivar"], apelidos), doc["cultivar"])
         doc["cultivarNome"] = (nomes or {}).get(cultivar_canonica(doc["cultivar"], apelidos)) if doc["cultivar"] else None
         doc["hash"] = hashlib.sha256(json.dumps(doc, sort_keys=True, ensure_ascii=False, default=list)
                                      .encode()).hexdigest()[:16]
@@ -642,13 +756,18 @@ def sincronizar(simular=False):
         print("RASTREL: não conectado")
 
     docs = consolidar(q, t, r, apelidos, carimbo, tsi_conectado=tsi_on, rastrel_conectado=rastrel_on,
-                      nomes=montar_nomes(dados.get("CV_META")))
+                      nomes=montar_nomes(dados.get("CV_META")), codigos_cv=montar_codigos(dados.get("CV_META")))
     cont = {}
     for d in docs.values():
         cont[d["situacao"]] = cont.get(d["situacao"], 0) + 1
     print("Situação:", json.dumps(cont, ensure_ascii=False))
     print("Com correspondência entre módulos:", sum(1 for d in docs.values() if len(d["modulos"]) > 1))
     print("Lotes com divergência:", sum(1 for d in docs.values() if d["divergencias"]))
+    for n in NIVEIS:
+        lotes_n = sum(1 for d in docs.values() if d["alertasPorNivel"][n])
+        total_n = sum(d["alertasPorNivel"][n] for d in docs.values())
+        print(f"Alertas {n}: {lotes_n} lotes ({total_n} alertas)")
+    print("Cultivares:", len({d["cultivar"] for d in docs.values() if d["cultivar"]}))
     novos, iguais, ausentes = gravar_lots(docs, simular=simular)
     print(f"lots/: {novos} gravados, {iguais} sem mudança, {ausentes} marcados presente=false"
           + (" (SIMULAÇÃO — nada gravado)" if simular else ""))
