@@ -178,3 +178,118 @@ def test_ordem_aberta_sem_lote_conta_como_pendente_e_nao_vincula():
     assert est["lotePendente"] == 1 and est["ordensSemLote"] == 1
     assert est["safras"] == {cl.SAFRA_ATIVA: 1, "SOJA2627": 1}
     assert list(t) == ["26S1"]
+
+
+# ---- Central V2: níveis de alerta e linha do tempo (só com evidência)
+
+def niveis(doc, codigo=None):
+    return {d["nivel"] for d in doc["divergencias"] if codigo is None or d["codigo"] == codigo}
+
+
+def etapa(doc, nome):
+    return doc["etapas"][nome]["estado"]
+
+
+def test_aprovado_sem_tsi_e_pendencia_nao_divergencia():
+    doc = montar([lote("20A")])["SOJA2526_20A"]
+    assert niveis(doc, "aprovado_sem_tsi") == {"PENDENCIA"}
+    assert doc["alertasPorNivel"] == {"DIVERGENCIA": 0, "AVISO": 0, "PENDENCIA": 1}
+    assert all(d["tipo"] == "aviso" for d in doc["divergencias"])   # tela antiga não pinta de vermelho
+    assert [etapa(doc, e) for e in ("qualidade", "tsi", "rastrel", "expedicao")] == \
+        ["CONCLUIDO", "PENDENTE", "PENDENTE", "PENDENTE"]
+
+
+def test_divergencias_reais_e_avisos_classificados():
+    lots = [lote("21A", cat="S2")]
+    bs = bags("21A ", 25, tags=24, peso=700)
+    doc = montar(lots, [ordem("1", "21A", pms=200.0)], bs)["SOJA2526_21A"]
+    assert niveis(doc, "categoria") == {"DIVERGENCIA"}
+    assert niveis(doc, "bags") == {"DIVERGENCIA"}
+    assert niveis(doc, "pms") == {"DIVERGENCIA"}
+    assert niveis(doc, "codigo_lote") == {"AVISO"}
+    assert niveis(doc, "peso_bag") == {"AVISO"}
+    assert niveis(doc, "bags_sem_tag") == {"PENDENCIA"}
+
+
+def test_cultivar_e_peneira_divergentes():
+    doc = montar([lote("22A", pen="P1")], [], [dict(b, peneira="P2") for b in bags("22A", 3, cultivar="Batalha")])["SOJA2526_22A"]
+    assert niveis(doc, "cultivar") == {"DIVERGENCIA"} and niveis(doc, "peneira") == {"DIVERGENCIA"}
+
+
+def test_reprovado_movimentado_e_divergencia_condicional_e_aviso():
+    d = montar([lote("23A", ranking="D"), lote("23B", ranking="C")], [ordem("1", "23A"), ordem("2", "23B")])
+    assert niveis(d["SOJA2526_23A"], "movimentado_reprovado") == {"DIVERGENCIA"}
+    assert niveis(d["SOJA2526_23B"], "movimentado_sem_aprovacao") == {"AVISO"}
+    assert etapa(d["SOJA2526_23A"], "qualidade") == "PENDENTE"     # reprovado nunca é "concluído"
+    assert d["SOJA2526_23A"]["etapas"]["qualidade"]["texto"].startswith("Reprovado")
+
+
+def test_rastrel_sem_tsi_nao_inventa_tsi_concluido():
+    doc = montar([lote("24A")], [], bags("24A", 20))["SOJA2526_24A"]
+    assert etapa(doc, "tsi") == "INDETERMINADO"          # RASTREL existir não prova TSI concluído
+    assert etapa(doc, "rastrel") == "CONCLUIDO"
+    assert niveis(doc, "rastrel_sem_tsi") == {"PENDENCIA"}
+    assert niveis(doc, "tratamento_sem_ordem") == {"AVISO"}
+
+
+def test_tsi_concluido_sem_rastrel_e_em_andamento():
+    d = montar([lote("25A"), lote("25B")], [ordem("1", "25A"), ordem("2", "25B", status="aberta")])
+    a, b = d["SOJA2526_25A"], d["SOJA2526_25B"]
+    assert etapa(a, "tsi") == "CONCLUIDO" and etapa(a, "rastrel") == "PENDENTE"
+    assert niveis(a, "tsi_sem_rastrel") == {"PENDENCIA"}
+    assert etapa(b, "tsi") == "EM_ANDAMENTO" and not niveis(b, "tsi_sem_rastrel")
+
+
+def test_expedicao_so_com_evidencia():
+    exp = lambda bs: [dict(x, status="expedido") for x in bs]
+    d = montar([lote("26A"), lote("26B"), lote("26C"), lote("26D", bags=30)],
+               [ordem(str(i), c) for i, c in enumerate(("26A", "26B", "26C", "26D"))],
+               bags("26A", 20) + exp(bags("26B", 20)) + exp(bags("26C", 5)) + bags("26C", 15) + exp(bags("26D", 20)))
+    assert etapa(d["SOJA2526_26A"], "expedicao") == "PENDENTE"
+    assert etapa(d["SOJA2526_26B"], "expedicao") == "CONCLUIDO"
+    assert etapa(d["SOJA2526_26C"], "expedicao") == "EM_ANDAMENTO"
+    assert etapa(d["SOJA2526_26D"], "expedicao") == "EM_ANDAMENTO"   # 20 expedidos de 30 previstos
+    assert etapa(d["SOJA2526_26D"], "rastrel") == "EM_ANDAMENTO"
+
+
+def test_lote_so_no_tsi_e_so_no_rastrel():
+    d = montar([], [ordem("1", "27A")], bags("27B", 4))
+    a, b = d["SEMSAFRA_27A"], d["SEMSAFRA_27B"]
+    assert etapa(a, "qualidade") == "INDETERMINADO" and etapa(a, "tsi") == "CONCLUIDO"
+    assert niveis(a, "fora_da_qualidade") == {"PENDENCIA"}
+    assert etapa(b, "qualidade") == "INDETERMINADO" and etapa(b, "tsi") == "INDETERMINADO"
+    assert etapa(b, "rastrel") == "INDETERMINADO"        # sem bags previstos
+    assert niveis(b, "sem_bags_previstos") == set()      # sem Qualidade: só "fora_da_qualidade"
+
+
+def test_nao_conectados_ficam_indeterminados():
+    doc = montar([lote("28A")], tsi=False, rastrel=False)["SOJA2526_28A"]
+    assert [etapa(doc, e) for e in ("tsi", "rastrel", "expedicao")] == ["INDETERMINADO"] * 3
+    assert not niveis(doc, "aprovado_sem_tsi")
+
+
+def test_multiplas_ordens_no_historico():
+    doc = montar([lote("29A")], [ordem("1", "29A"), ordem("2", "29A", status="aberta")])["SOJA2526_29A"]
+    assert [o["ordem"] for o in doc["tsi"]["ordens"]] == ["1", "2"]
+    assert etapa(doc, "tsi") == "EM_ANDAMENTO"
+
+
+def test_nenhuma_etapa_concluida_sem_dado():
+    # varre combinações: etapa concluída exige o dado da PRÓPRIA etapa
+    d = montar([lote("30A"), lote("30B", ranking="X")], [ordem("1", "30B")], bags("30A", 20) + bags("30C", 2))
+    for doc in d.values():
+        if etapa(doc, "qualidade") == "CONCLUIDO":
+            assert doc["qualidadeStatus"] == "APROVADO"
+        if etapa(doc, "tsi") == "CONCLUIDO":
+            assert doc["tsi"] and all(o["status"] == "CONCLUÍDA" for o in doc["tsi"]["ordens"])
+        if etapa(doc, "rastrel") == "CONCLUIDO":
+            assert doc["rastrel"] and doc["totalBags"] and doc["rastrel"]["tags"] >= doc["totalBags"]
+        if etapa(doc, "expedicao") == "CONCLUIDO":
+            assert doc["rastrel"] and doc["rastrel"]["expedidos"] > 0
+
+
+def test_cultivar_de_outro_modulo_vira_codigo_da_qualidade():
+    q = cl.resumir_qualidade({"LOTS": []})
+    t, _ = cl.resumir_tsi([ordem("1", "31A")])
+    d = cl.consolidar(q, t, {}, AP, "agora", nomes=cl.montar_nomes(CV), codigos_cv=cl.montar_codigos(CV))
+    assert d["SEMSAFRA_31A"]["cultivar"] == "55I57RSF IPRO" and d["SEMSAFRA_31A"]["cultivarNome"] == "Zeus"
