@@ -90,3 +90,13 @@ test('coleção não prevista: fechada', async () => {
   await assertFails(setDoc(doc(db('adm'), 'outra', 'x'), { a: 1 }));
   await assertFails(setDoc(doc(db('adm'), 'usuarios', 'x'), { a: 1 }));
 });
+test('diagnóstico: escrita com pré-condição "existe" em documento novo é avaliada como update', async () => {
+  // updateDoc em documento inexistente = escrita com pré-condição exists=true.
+  // Se o Firestore avalia como "update", o OPERADOR recebe permission-denied
+  // (update de histórico só ADMIN) e o ADMIN recebe not-found.
+  const codigo = async (uid) => { try { await updateDoc(doc(db(uid), 'movimentacoes', 'nao-existe-' + uid), mov()); return 'ok'; } catch (e) { return e.code; } };
+  const op = await codigo('op'), adm = await codigo('adm');
+  console.log('# DIAGNOSTICO operador=' + op + ' admin=' + adm);
+  // e a criação real pelo operador continua permitida:
+  await assertSucceeds(addDoc(collection(db('op'), 'movimentacoes'), mov()));
+});
