@@ -1,0 +1,114 @@
+name: Central de Lotes (sincronização somente leitura)
+
+# Monta o índice lots/{lotId} no Firebase "seedmax" a partir de:
+#   Qualidade (seedmax)  ·  TSI (estoquetsi)  ·  RASTREL (rastreabilidade-a511a)
+#
+# TSI e RASTREL são SÓ LIDOS, sem chave JSON: o GitHub prova quem é por
+# OIDC e o Google entrega um token curto (Workload Identity Federation) de
+# uma conta de serviço que só tem "Leitor do Cloud Datastore".
+# Cada módulo só é lido quando a variável correspondente estiver ligada:
+#   Settings → Secrets and variables → Actions → Variables
+#     CENTRAL_TSI = sim       CENTRAL_RASTREL = sim
+# Antes de ler, o robô PROVA que a credencial não consegue gravar; se
+# conseguir, para sem gravar nada.
+
+on:
+  schedule:
+    # de hora em hora, 07h–19h de Brasília (10–22 UTC), segunda a sábado,
+    # no minuto 41 (fora dos horários de pico do GitHub)
+    - cron: '41 10-22 * * 1-6'
+  workflow_dispatch:
+    inputs:
+      simular:
+        description: 'Só calcular (não gravar lots/)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write     # necessário para o Workload Identity Federation
+
+concurrency:
+  group: central-lotes
+  cancel-in-progress: false
+
+env:
+  WIF_PROVIDER: projects/261583026851/locations/global/workloadIdentityPools/github/providers/seedmax-qualidade
+  TSI_SA: central-lotes-leitura@estoquetsi.iam.gserviceaccount.com
+  RASTREL_SA: central-lotes-leitura@rastreabilidade-a511a.iam.gserviceaccount.com
+
+jobs:
+  sincronizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Conferir configuração
+        id: config
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$SA" ]; then
+            echo "Secret FIREBASE_SERVICE_ACCOUNT não configurado — nada a fazer."
+            echo "pronto=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "pronto=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "TSI: ${{ vars.CENTRAL_TSI == 'sim' && 'conectado' || 'não conectado' }}"
+          echo "RASTREL: ${{ vars.CENTRAL_RASTREL == 'sim' && 'conectado' || 'não conectado' }}"
+
+      - uses: actions/checkout@v4
+        if: steps.config.outputs.pronto == 'true'
+
+      - name: Credencial federada — TSI (somente leitura)
+        id: auth_tsi
+        if: steps.config.outputs.pronto == 'true' && vars.CENTRAL_TSI == 'sim'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.TSI_SA }}
+          create_credentials_file: true
+          export_environment_variables: false
+
+      - name: Credencial federada — RASTREL (somente leitura)
+        id: auth_rastrel
+        if: steps.config.outputs.pronto == 'true' && vars.CENTRAL_RASTREL == 'sim'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.RASTREL_SA }}
+          create_credentials_file: true
+          export_environment_variables: false
+
+      - uses: actions/setup-python@v5
+        if: steps.config.outputs.pronto == 'true'
+        with:
+          python-version: '3.12'
+
+      - name: Instalar dependências
+        if: steps.config.outputs.pronto == 'true'
+        run: pip install --quiet firebase-admin google-cloud-firestore
+
+      - name: Provar que TSI/RASTREL estão somente leitura
+        if: steps.config.outputs.pronto == 'true' && (vars.CENTRAL_TSI == 'sim' || vars.CENTRAL_RASTREL == 'sim')
+        working-directory: scripts
+        env:
+          CENTRAL_TSI: ${{ vars.CENTRAL_TSI }}
+          CENTRAL_RASTREL: ${{ vars.CENTRAL_RASTREL }}
+          TSI_CREDENCIAIS: ${{ steps.auth_tsi.outputs.credentials_file_path }}
+          RASTREL_CREDENCIAIS: ${{ steps.auth_rastrel.outputs.credentials_file_path }}
+        run: python central_lotes.py provar-somente-leitura
+
+      - name: Sincronizar lots/
+        if: steps.config.outputs.pronto == 'true'
+        working-directory: scripts
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          CENTRAL_TSI: ${{ vars.CENTRAL_TSI }}
+          CENTRAL_RASTREL: ${{ vars.CENTRAL_RASTREL }}
+          TSI_CREDENCIAIS: ${{ steps.auth_tsi.outputs.credentials_file_path }}
+          RASTREL_CREDENCIAIS: ${{ steps.auth_rastrel.outputs.credentials_file_path }}
+        run: python central_lotes.py sincronizar ${{ inputs.simular && '--simular' || '' }}
+
+      - name: Apagar credenciais temporárias
+        if: always()
+        run: rm -f gha-creds-*.json || true

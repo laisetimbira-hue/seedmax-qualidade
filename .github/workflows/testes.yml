@@ -5,7 +5,7 @@ name: Testes de segurança (regras do Firestore)
 
 on:
   push:
-    paths: ['firestore.rules', 'tests/**', '.github/workflows/testes.yml']
+    paths: ['firestore.rules', 'tests/**', 'scripts/central_lotes.py', '.github/workflows/testes.yml']
   pull_request:
   workflow_dispatch:
 
@@ -30,3 +30,13 @@ jobs:
       - name: Testar regras no emulador
         working-directory: tests
         run: npx firebase-tools@13 emulators:exec --only firestore --project demo-seedmax --config ../firebase.json "node --test regras.test.mjs"
+
+  central-lotes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Testar a consolidação da Central de Lotes
+        run: pip install --quiet pytest && python -m pytest tests/test_central_lotes.py -q
