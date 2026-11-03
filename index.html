@@ -1529,6 +1529,7 @@ html {
   <div class="tab" onclick="showPage('lotes')">Lotes Detalhados</div>
   <div class="tab" onclick="showPage('comprados')">Lotes Comprados</div>
   <div class="tab" onclick="showPage('plantio')">Nosso Plantio</div>
+  <div class="tab" onclick="showPage('central')">Central de Lotes</div>
 </div>
 
 <main>
@@ -1888,6 +1889,52 @@ html {
 
   </div>
 
+  <!-- CENTRAL DE LOTES (somente leitura: Qualidade + TSI + RASTREL) -->
+  <div class="page" id="page-central">
+    <div id="central-kpis" class="kpi-grid" style="margin-bottom:16px;"></div>
+    <div class="filter-bar">
+      <input type="text" id="central-search" placeholder="🔍 Buscar lote ou cultivar..." oninput="filtrarCentral()">
+      <select id="central-safra" onchange="filtrarCentral()"><option value="">Todas as Safras</option></select>
+      <select id="central-cultivar" onchange="filtrarCentral()"><option value="">Todos os Cultivares</option></select>
+      <select id="central-situacao" onchange="filtrarCentral()"><option value="">Todas as Situações</option></select>
+      <select id="central-qualidade" onchange="filtrarCentral()"><option value="">Qualidade: todos</option></select>
+      <select id="central-tsi" onchange="filtrarCentral()"><option value="">TSI: todos</option></select>
+      <select id="central-rastrel" onchange="filtrarCentral()"><option value="">RASTREL: todos</option></select>
+      <select id="central-div" onchange="filtrarCentral()">
+        <option value="">Divergências: todas</option>
+        <option value="com">Com divergência</option>
+        <option value="sem">Sem divergência</option>
+      </select>
+      <div class="count-badge">Exibindo <span id="central-count">—</span> lotes</div>
+    </div>
+    <div id="central-aviso" style="display:none;font-size:0.78rem;color:var(--texto2);margin:-6px 0 12px 2px;"></div>
+    <div class="panel">
+      <div class="lotes-table-wrap">
+        <table id="central-table">
+          <thead>
+            <tr>
+              <th onclick="ordenarCentral('lotCode')">Lote</th>
+              <th onclick="ordenarCentral('cultivar')">Cultivar</th>
+              <th onclick="ordenarCentral('categoria')" class="col-hide-mobile">Cat.</th>
+              <th onclick="ordenarCentral('peneira')" class="col-hide-mobile">Pen.</th>
+              <th onclick="ordenarCentral('qualidadeClasse')">Qualidade</th>
+              <th onclick="ordenarCentral('tsiStatus')">TSI</th>
+              <th onclick="ordenarCentral('taggedBags')" class="num">Bags</th>
+              <th onclick="ordenarCentral('rastrelStatus')">RASTREL</th>
+              <th onclick="ordenarCentral('situacao')">Situação</th>
+              <th style="width:28px;" title="Divergências">⚠️</th>
+            </tr>
+          </thead>
+          <tbody id="central-tbody"><tr><td colspan="10" style="padding:18px;color:var(--texto2);">Carregando…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+    <div style="font-size:0.72rem;color:var(--texto2);margin-top:8px;">
+      Somente consulta. Cada módulo continua dono dos seus dados: Qualidade (cultivar, categoria, peneira, resultados, classe),
+      TSI (ordens, receitas, tratamento) e RASTREL (bags, tags, movimentação, expedição). <span id="central-atualizado"></span>
+    </div>
+  </div>
+
 
 </main>
 </div>
@@ -2145,6 +2192,7 @@ function showPage(name) {
   if (name === 'beneficiamento') buildBeneficiamento();
   if (name === 'comprados') buildLotesComprados();
   if (name === 'plantio') buildNossoPlantio();
+  if (name === 'central') buildCentralLotes();
   if (name === 'mapa') {
     setTimeout(() => {
       initMapa();
@@ -5430,6 +5478,144 @@ window.addEventListener('load', function() {
     <polyline points="18 15 12 9 6 15"/>
   </svg>
 </button>
+<script type="text/seedmax-app">
+// =================== CENTRAL DE LOTES (somente leitura) ===================
+// Lê o índice lots/{lotId} montado pelo robô (scripts/central_lotes.py).
+// Esta tela NÃO grava nada: as regras do Firestore negam qualquer escrita
+// em lots/ pelo navegador.
+let CENTRAL = null, centralCarregando = false, centralOrdem = { campo: 'lotCode', asc: true };
+const CENTRAL_SIT_CLASSE = {
+  'PRONTO': 'rank-A', 'RASTREANDO': 'rank-B', 'AGUARDANDO RASTREL': 'rank-BV', 'EM TSI': 'rank-B',
+  'LIBERADO PARA TSI': 'rank-B', 'QUALIDADE PENDENTE': 'rank-C', 'INDETERMINADO': 'rank-X'
+};
+const CENTRAL_SIT_ORDEM = ['QUALIDADE PENDENTE','LIBERADO PARA TSI','EM TSI','AGUARDANDO RASTREL','RASTREANDO','PRONTO','INDETERMINADO'];
+const CENTRAL_Q_CLASSE = { 'APROVADO': 'rank-A', 'CONDICIONAL': 'rank-C', 'REPROVADO': 'rank-D', 'PENDENTE': 'rank-X', 'NÃO ENCONTRADO': 'rank-X' };
+
+function cEsc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function cNum(v, d) { return v == null || v === '' ? '—' : Number(v).toLocaleString('pt-BR', { maximumFractionDigits: d == null ? 1 : d }); }
+
+async function buildCentralLotes(forcar) {
+  if ((CENTRAL && !forcar) || centralCarregando) return;
+  centralCarregando = true;
+  const tb = document.getElementById('central-tbody');
+  try {
+    const snap = await smDb.collection('lots').get();
+    CENTRAL = snap.docs.map(d => d.data()).filter(x => x && x.lotId && x.presente !== false);
+  } catch (e) {
+    tb.innerHTML = '<tr><td colspan="10" style="padding:18px;color:var(--critico);">Não foi possível carregar a Central de Lotes (' + cEsc(e.code || e.message) + ').</td></tr>';
+    centralCarregando = false; return;
+  }
+  centralCarregando = false;
+  if (!CENTRAL.length) {
+    tb.innerHTML = '<tr><td colspan="10" style="padding:18px;color:var(--texto2);">A Central de Lotes ainda não foi sincronizada.</td></tr>';
+    return;
+  }
+  const opc = (id, valores, rotulo) => {
+    const el = document.getElementById(id), atual = el.value;
+    el.innerHTML = '<option value="">' + rotulo + '</option>' + valores.map(v => '<option value="' + cEsc(v) + '">' + cEsc(v) + '</option>').join('');
+    el.value = atual;
+  };
+  const uniq = f => [...new Set(CENTRAL.map(f).filter(v => v != null && v !== ''))].sort((a, b) => String(a).localeCompare(String(b), 'pt-BR'));
+  opc('central-safra', uniq(x => x.crop), 'Todas as Safras');
+  opc('central-cultivar', uniq(x => x.cultivar), 'Todos os Cultivares');
+  opc('central-situacao', CENTRAL_SIT_ORDEM.filter(s => CENTRAL.some(x => x.situacao === s)), 'Todas as Situações');
+  opc('central-qualidade', uniq(x => x.qualidadeStatus), 'Qualidade: todos');
+  opc('central-tsi', uniq(x => x.tsiStatus), 'TSI: todos');
+  opc('central-rastrel', uniq(x => x.rastrelStatus), 'RASTREL: todos');
+  const datas = uniq(x => x.lastUpdate);
+  document.getElementById('central-atualizado').textContent = datas.length ? 'Sincronizado em ' + datas[datas.length - 1] + '.' : '';
+  const naoConectados = ['TSI', 'RASTREL'].filter(m => CENTRAL.every(x => (m === 'TSI' ? x.tsiStatus : x.rastrelStatus) === 'NÃO CONECTADO'));
+  const aviso = document.getElementById('central-aviso');
+  aviso.style.display = naoConectados.length ? 'block' : 'none';
+  aviso.textContent = naoConectados.length ? 'ℹ️ ' + naoConectados.join(' e ') + ' ainda não conectado(s) à Central — a situação desses lotes fica INDETERMINADO até a conexão.' : '';
+  filtrarCentral();
+}
+
+function ordenarCentral(campo) {
+  centralOrdem = { campo, asc: centralOrdem.campo === campo ? !centralOrdem.asc : true };
+  filtrarCentral();
+}
+
+function filtrarCentral() {
+  if (!CENTRAL) return;
+  const val = id => document.getElementById(id).value;
+  const busca = document.getElementById('central-search').value.trim().toUpperCase();
+  const [sf, cv, si, ql, ts, rs, dv] = ['central-safra','central-cultivar','central-situacao','central-qualidade','central-tsi','central-rastrel','central-div'].map(val);
+  let lista = CENTRAL.filter(x =>
+    (!busca || String(x.lotCode).toUpperCase().includes(busca) || String(x.cultivar || '').toUpperCase().includes(busca) || String(x.cultivarNome || '').toUpperCase().includes(busca)) &&
+    (!sf || x.crop === sf) && (!cv || x.cultivar === cv) && (!si || x.situacao === si) &&
+    (!ql || x.qualidadeStatus === ql) && (!ts || x.tsiStatus === ts) && (!rs || x.rastrelStatus === rs) &&
+    (!dv || (dv === 'com') === ((x.divergencias || []).some(d => d.tipo !== 'aviso'))));
+  const { campo, asc } = centralOrdem;
+  lista.sort((a, b) => {
+    let va = a[campo], vb = b[campo];
+    if (campo === 'situacao') { va = CENTRAL_SIT_ORDEM.indexOf(va); vb = CENTRAL_SIT_ORDEM.indexOf(vb); }
+    if (va == null) return 1; if (vb == null) return -1;
+    const r = (typeof va === 'number' && typeof vb === 'number') ? va - vb : String(va).localeCompare(String(vb), 'pt-BR', { numeric: true });
+    return asc ? r : -r;
+  });
+  document.getElementById('central-count').textContent = lista.length;
+  renderCentralKpis();
+  document.getElementById('central-tbody').innerHTML = lista.map((x, i) => {
+    const divs = (x.divergencias || []);
+    const nDiv = divs.filter(d => d.tipo !== 'aviso').length;
+    const bags = x.rastrel ? (x.taggedBags + (x.totalBags ? ' / ' + x.totalBags : '')) : (x.totalBags != null ? '0 / ' + x.totalBags : '—');
+    const q = x.qualidadeStatus === 'NÃO ENCONTRADO' ? '<span class="rank-badge rank-X">não encontrado</span>'
+      : '<span class="rank-badge ' + (CENTRAL_Q_CLASSE[x.qualidadeStatus] || 'rank-X') + '">' + cEsc(x.qualidadeClasse ? x.qualidadeClasse + ' · ' : '') + cEsc(x.qualidadeStatus.toLowerCase()) + '</span>';
+    return '<tr style="cursor:pointer;" onclick="detalheCentral(' + i + ')" data-lot="' + cEsc(x.lotId) + '">' +
+      '<td style="font-weight:700;">' + cEsc(x.lotCode) + (x.crop === 'SEMSAFRA' ? ' <span style="color:var(--texto2);font-weight:400;">(sem safra)</span>' : '') + '</td>' +
+      '<td>' + cEsc(x.cultivar || '—') + (x.cultivarNome ? ' <span style="color:var(--texto2);">' + cEsc(x.cultivarNome) + '</span>' : '') + '</td>' +
+      '<td class="col-hide-mobile">' + cEsc(x.categoria || '—') + '</td>' +
+      '<td class="col-hide-mobile">' + cEsc(x.peneira == null ? '—' : x.peneira) + '</td>' +
+      '<td>' + q + '</td>' +
+      '<td>' + cEsc(x.tsiStatus) + '</td>' +
+      '<td class="num">' + cEsc(bags) + '</td>' +
+      '<td>' + cEsc(x.rastrelStatus) + '</td>' +
+      '<td><span class="rank-badge ' + (CENTRAL_SIT_CLASSE[x.situacao] || 'rank-X') + '" title="' + cEsc(x.motivo) + '">' + cEsc(x.situacao) + '</span></td>' +
+      '<td style="text-align:center;" title="' + cEsc(divs.map(d => d.texto).join('\n')) + '">' + (nDiv ? '<b style="color:var(--critico);">' + nDiv + '</b>' : (divs.length ? '<span style="color:var(--texto2);">·</span>' : '')) + '</td>' +
+      '</tr><tr id="central-det-' + i + '" style="display:none;"><td colspan="10" style="white-space:normal;background:var(--bg3);padding:12px 14px;"></td></tr>';
+  }).join('') || '<tr><td colspan="10" style="padding:18px;color:var(--texto2);">Nenhum lote com esses filtros.</td></tr>';
+  window.__centralLista = lista;
+}
+
+function renderCentralKpis() {
+  const cont = {};
+  CENTRAL.forEach(x => { cont[x.situacao] = (cont[x.situacao] || 0) + 1; });
+  const multi = CENTRAL.filter(x => (x.modulos || []).length > 1).length;
+  const comDiv = CENTRAL.filter(x => (x.divergencias || []).some(d => d.tipo !== 'aviso')).length;
+  const k = (rot, v, sub, cls) => '<div class="kpi ' + (cls || '') + '"><div class="label">' + rot + '</div><div class="value" style="font-size:1.6rem;">' + v + '</div>' + (sub ? '<div class="sub">' + sub + '</div>' : '') + '</div>';
+  document.getElementById('central-kpis').innerHTML =
+    k('Lotes', CENTRAL.length, multi + ' em mais de um módulo') +
+    k('Prontos', cont['PRONTO'] || 0, 'TSI + todos os bags com tag', 'accent') +
+    k('Em andamento', (cont['LIBERADO PARA TSI'] || 0) + (cont['EM TSI'] || 0) + (cont['AGUARDANDO RASTREL'] || 0) + (cont['RASTREANDO'] || 0), 'liberado, em TSI ou rastreando') +
+    k('Qualidade pendente', cont['QUALIDADE PENDENTE'] || 0, 'não liberados', 'warn') +
+    k('Indeterminados', cont['INDETERMINADO'] || 0, 'dados insuficientes') +
+    k('Com divergência', comDiv, 'entre módulos', comDiv ? 'danger' : '');
+}
+
+function detalheCentral(i) {
+  const x = (window.__centralLista || [])[i]; if (!x) return;
+  const tr = document.getElementById('central-det-' + i);
+  if (tr.style.display !== 'none') { tr.style.display = 'none'; return; }
+  const q = x.qualidade, t = x.tsi, r = x.rastrel;
+  const bloco = (titulo, corpo) => '<div style="min-width:220px;flex:1;"><div style="font-weight:700;margin-bottom:4px;">' + titulo + '</div><div style="color:var(--texto2);line-height:1.55;">' + corpo + '</div></div>';
+  const linhaOrdem = o => 'Ordem ' + cEsc(o.ordem) + ' · ' + cEsc(o.status.toLowerCase()) + ' · ' + cEsc(o.data || '') + ' · ' + cEsc(o.receita || '') +
+    ' · ' + cNum(o.qtdOrigem, 2) + ' → ' + cNum(o.qtdDestino, 2) + ' ' + cEsc(o.unidade || '') + ' · ' + cNum(o.kg) + ' kg · PMS ' + cNum(o.pms) +
+    (o.sourceLotCode !== o.treatedLotCode ? ' · <b>' + cEsc(o.sourceLotCode) + ' → ' + cEsc(o.treatedLotCode) + '</b>' : '');
+  const fmtMapa = m => Object.entries(m || {}).map(([k, v]) => cEsc(k) + ' (' + v + ')').join(', ');
+  const divs = (x.divergencias || []).map(d => '<li>' + (d.tipo === 'aviso' ? 'ℹ️ ' : '⚠️ ') + cEsc(d.texto) +
+    ['qualidade', 'tsi', 'rastrel'].filter(m => d[m] != null).map(m => ' · ' + m.toUpperCase() + ': ' + cEsc(Array.isArray(d[m]) ? d[m].join(', ') : d[m])).join('') + '</li>').join('');
+  tr.firstChild.innerHTML =
+    '<div style="margin-bottom:8px;"><b>' + cEsc(x.lotId) + '</b> · ' + cEsc(x.situacao) + ' — ' + cEsc(x.motivo) + '</div>' +
+    '<div style="display:flex;gap:18px;flex-wrap:wrap;">' +
+    bloco('Qualidade', q ? (cEsc(q.rotulo || '') + (x.qualidadeClasse ? ' (' + cEsc(x.qualidadeClasse) + ')' : '') + ' · ' + (q.fonte === 'comprado' ? 'comprado' : 'produção') +
+      '<br>Germ. ' + cNum(q.germ) + '% · Vigor ' + cNum(q.vigor) + '% · PMS ' + cNum(q.pms) + ' g<br>' + cNum(q.bags, 0) + ' bags · ' + cNum(q.kg, 0) + ' kg') : 'Lote não encontrado na Qualidade.') +
+    bloco('TSI', t ? (t.ordens.map(linhaOrdem).join('<br>') + '<br>sourceLotId ' + cEsc(x.sourceLotId) + ' · treatedLotId ' + cEsc(x.treatedLotId || '—')) : cEsc(x.tsiStatus === 'NÃO CONECTADO' ? 'TSI ainda não conectado.' : 'Nenhuma ordem do TSI informa este lote.')) +
+    bloco('RASTREL', r ? (r.bags + ' bags · ' + r.tags + ' com tag · ' + cNum(r.kg, 0) + ' kg<br>' + r.expedidos + ' expedidos · ' + r.emEstoque + ' em estoque<br>Tratamento: ' + fmtMapa(r.tratamentos)) : cEsc(x.rastrelStatus === 'NÃO CONECTADO' ? 'RASTREL ainda não conectado.' : 'Nenhum bag deste lote no RASTREL.')) +
+    '</div>' + (divs ? '<ul style="margin:10px 0 0 18px;padding:0;">' + divs + '</ul>' : '');
+  tr.style.display = '';
+}
+</script>
 <script type="text/seedmax-app">
 setInterval(function(){
   // Botão global (página)
