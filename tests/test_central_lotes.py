@@ -111,3 +111,70 @@ def test_hash_estavel():
     a = montar([lote("10A")])["SOJA2526_10A"]["hash"]
     b = montar([lote("10A")])["SOJA2526_10A"]["hash"]
     assert a == b
+
+
+# ---- TSI com lote obrigatório (sourceLotId / treatedLotId gravados pelo TSI)
+
+def ordem_nova(num, origem, destino=None, status="fechada", safra=cl.SAFRA_ATIVA, kg=2000):
+    src = cl.codigo_lote(origem)
+    dst = cl.codigo_lote(destino) or src
+    return {"id": num, "numeroLote": num, "status": status, "cultivar": "Zeus", "receitaNome": "TSI B",
+            "data": "2026-11-03", "safra": safra,
+            "sourceLotIds": [cl.montar_lot_id(safra, src)], "treatedLotIds": [cl.montar_lot_id(safra, dst)],
+            "lotesDetalhe": [{"origem": src, "destino": dst, "kg": kg, "fonteLote": "manual",
+                              "sourceLotCode": src, "sourceLotId": cl.montar_lot_id(safra, src),
+                              "treatedLotCode": dst, "treatedLotId": cl.montar_lot_id(safra, dst)}]}
+
+
+def test_ordem_manual_com_lot_id_vincula_sem_aviso():
+    d = montar([lote("26S200A")], [ordem_nova("7777", "26S200A")], bags("26S200A", 20))
+    doc = d["SOJA2526_26S200A"]
+    assert doc["tsiStatus"] == "CONCLUÍDO"
+    assert doc["sourceLotId"] == "SOJA2526_26S200A" and doc["treatedLotId"] == "SOJA2526_26S200A"
+    assert doc["tsi"]["ordens"][0]["sourceLotId"] == "SOJA2526_26S200A"
+    assert not any(x["campo"] in ("lotId", "lote") for x in doc["divergencias"])
+    assert doc["situacao"] == "PRONTO"
+
+
+def test_ordem_manual_lote_tratado_com_codigo_novo():
+    d = montar([lote("26S201B")], [ordem_nova("7778", "26S201B", "26S201BT")])
+    assert d["SOJA2526_26S201B"]["treatedLotId"] == "SOJA2526_26S201BT"
+
+
+def test_lot_id_do_tsi_diferente_da_central_gera_aviso():
+    # lote fora da Qualidade: a Central usa SEMSAFRA_, o TSI gravou SOJA2526_
+    d = montar([lote("26S133C")], [ordem_nova("7779", "99X999")])
+    doc = d["SEMSAFRA_99X999"]
+    av = [x for x in doc["divergencias"] if x["campo"] == "lotId"]
+    assert av and av[0]["tipo"] == "aviso" and av[0]["tsi"] == ["SOJA2526_99X999"]
+    assert "SEMSAFRA_99X999" in av[0]["texto"]
+
+
+def test_sourcelotcode_tem_prioridade_sobre_origem():
+    o = ordem_nova("7780", "26S300C")
+    o["lotesDetalhe"][0]["origem"] = " 26s300c. "   # texto livre antigo; o código padrão manda
+    _, est = cl.resumir_tsi([o])
+    t, _ = cl.resumir_tsi([o])
+    assert list(t) == ["26S300C"] and est["linhasComLotId"] == 1
+
+
+def test_codigo_lote_igual_ao_do_tsi():
+    # mesmas regras do codigoLote()/montarLotId() do index.html do TSI
+    assert cl.codigo_lote(" 26s35b. ") == "26S35B"
+    assert cl.codigo_lote("-a1") == "A1"
+    assert cl.montar_lot_id("SOJA2526", "26S/1") == "SOJA2526_26S-1"
+
+
+def test_safra_ativa_unica():
+    assert cl.SAFRA_PADRAO == cl.SAFRA_ATIVA
+    d = montar([lote("26S200A")], [ordem_nova("7781", "26S200A")])
+    assert (cl.SAFRA_ATIVA + "_26S200A") in d
+
+
+def test_ordem_aberta_sem_lote_conta_como_pendente_e_nao_vincula():
+    pend = {"id": "9002", "numeroLote": "9002", "status": "aberta", "cultivar": "Zeus",
+            "safra": cl.SAFRA_ATIVA, "lotePendente": True, "lotesDetalhe": []}
+    t, est = cl.resumir_tsi([pend, ordem_nova("9003", "26S1", safra="SOJA2627")])
+    assert est["lotePendente"] == 1 and est["ordensSemLote"] == 1
+    assert est["safras"] == {cl.SAFRA_ATIVA: 1, "SOJA2627": 1}
+    assert list(t) == ["26S1"]
