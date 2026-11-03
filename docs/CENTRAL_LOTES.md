@@ -43,6 +43,39 @@ e nada é gravado no TSI nem no RASTREL.
 | `divergencias[]` | calculado | `{campo, tipo: divergencia/aviso, texto, qualidade, tsi, rastrel}` |
 | `modulos[]`, `presente`, `hash`, `lastUpdate` | robô | `presente=false` quando o lote sumiu da origem (nunca apaga) |
 
+## Central V2 (nov/2026): alertas em 3 níveis e linha do tempo
+
+Cada item de `divergencias[]` tem agora `nivel` e `codigo` (o campo `tipo` continua, por
+compatibilidade: `divergencia` só no nível DIVERGENCIA). `alertasPorNivel` traz a contagem.
+
+| Nível | Quando | Códigos |
+|---|---|---|
+| **DIVERGENCIA** | dois módulos informam dados incompatíveis | `cultivar`, `categoria`, `peneira`, `pms`, `bags`, `movimentado_reprovado` |
+| **AVISO** | merece atenção, não é necessariamente erro | `codigo_lote`, `peso_bag`, `bags_sem_peso`, `tratamento_sem_ordem`, `multiplos_tratamentos`, `movimentado_sem_aprovacao`, `lotid_diferente`, `varios_lotes_tratados` |
+| **PENDENCIA** | falta informação para concluir o fluxo | `aprovado_sem_tsi`, `tsi_sem_rastrel`, `rastrel_sem_tsi`, `bags_sem_tag`, `fora_da_qualidade`, `sem_bags_previstos` |
+
+"Aprovado na Qualidade, mas nenhuma ordem TSI informa este lote" é **pendência**, nunca
+divergência (o histórico do TSI tem muitas ordens sem lote).
+
+`etapas` = `{qualidade, tsi, rastrel, expedicao}`, cada uma `{estado, texto}` com estado
+`CONCLUIDO`, `EM_ANDAMENTO`, `PENDENTE` ou `INDETERMINADO`. Regra: só evidência da própria
+etapa — uma etapa nunca vira concluída porque uma etapa posterior existe.
+
+| Etapa | Concluído | Em andamento | Pendente | Indeterminado |
+|---|---|---|---|---|
+| Qualidade | aprovado (A, B, comprado APROVADO) | — | condicional, em análise, **reprovado** | lote fora da Qualidade |
+| TSI | todas as ordens com o lote concluídas | há ordem aberta | aprovado sem ordem / aguardando Qualidade | bags no RASTREL sem ordem com lote; fora da Qualidade; TSI não conectado |
+| RASTREL | tags ≥ bags previstos | parte dos previstos com tag | sem bags | sem bags previstos na Qualidade; não conectado |
+| Expedição | todos os bags expedidos (e ≥ previstos) | parte expedida | nenhum expedido / sem bags | RASTREL não conectado |
+
+Lotes cuja cultivar veio só do TSI/RASTREL ("Zeus") recebem o código da Qualidade
+("55I57RSF IPRO"), para filtro e resumo por cultivar juntarem o mesmo material.
+
+Tela (aba Central de Lotes): 8 cards clicáveis, abas *Lotes* / *Resumo por cultivar*, filtros
+(+ nível de alerta, "só com alerta", "em mais de um módulo"), busca por lote, cultivar, nome
+comercial e N° da ordem TSI, detalhe do lote em painel (aberto sob demanda), tabela em blocos
+de 300 linhas. Uma leitura de `lots/` por abertura da aba, sem listeners.
+
 ## Situação do lote
 
 | Situação | Regra |
