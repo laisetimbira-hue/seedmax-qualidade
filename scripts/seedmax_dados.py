@@ -76,7 +76,7 @@ def _hash(texto):
 
 def montar_lot_id(safra, lote):
     """lotId estável: safra + código do lote, só letras/números/_/-.
-    Ex.: SOJA2526_26S01F. Nunca usa posição no array."""
+    Ex.: SOJA2526_26S999X. Nunca usa posição no array."""
     lote = re.sub(r"[^A-Za-z0-9_-]+", "-", str(lote or "").strip().upper()).strip("-")
     return f"{safra}_{lote}" if lote else None
 
