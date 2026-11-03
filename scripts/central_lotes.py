@@ -43,7 +43,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 PROJETO_TSI = "estoquetsi"
 PROJETO_RASTREL = "rastreabilidade-a511a"
-SAFRA_PADRAO = "SOJA2526"
+# ---------------------------------------------------------------- SAFRA ATIVA
+# ÚNICO lugar para trocar a safra na Central de Lotes: lotId = SAFRA_LOTE.
+# Na virada de safra, trocar aqui E no TSI (estoquetsi/index.html → SAFRA_ATIVA,
+# logo antes do firebaseConfig), juntos. O robô avisa no log quando encontrar
+# ordens do TSI gravadas com outra safra.
+SAFRA_ATIVA = "SOJA2526"
+SAFRA_PADRAO = SAFRA_ATIVA   # nome antigo, mantido por compatibilidade
 SEM_SAFRA = "SEMSAFRA"
 ESQUEMA = 1
 
@@ -175,14 +181,22 @@ def resumir_qualidade(dados):
 def resumir_tsi(ordens):
     """ordens = lista de documentos de lotesTratamento (dicts, com 'id').
     Só ordens que informam o lote de semente (lotesDetalhe) entram no
-    vínculo. Devolve ({lotCode: resumo}, estatísticas)."""
+    vínculo. Desde nov/2026 o TSI exige o lote em toda ordem nova e grava em
+    cada linha sourceLotCode/sourceLotId e treatedLotCode/treatedLotId
+    (SAFRA_LOTE); quando existem, são usados no lugar de origem/destino.
+    Devolve ({lotCode: resumo}, estatísticas)."""
     out = {}
-    est = {"ordens": 0, "ordensComLote": 0, "ordensSemLote": 0, "linhasDeLote": 0}
+    est = {"ordens": 0, "ordensComLote": 0, "ordensSemLote": 0, "linhasDeLote": 0, "linhasComLotId": 0,
+           "lotePendente": 0, "safras": {}}
     for o in ordens or []:
         est["ordens"] += 1
         linhas = o.get("lotesDetalhe") or []
+        if o.get("safra"):
+            est["safras"][o["safra"]] = est["safras"].get(o["safra"], 0) + 1
         if not linhas:
             est["ordensSemLote"] += 1
+            if o.get("status") == "aberta":
+                est["lotePendente"] += 1   # importada sem lote: o TSI só deixa fechar depois de informar
             continue
         est["ordensComLote"] += 1
         # No TSI, ordem "aberta" = importada/em tratamento; "fechada" ou sem
@@ -190,15 +204,22 @@ def resumir_tsi(ordens):
         concluida = (o.get("status") != "aberta")
         for l in linhas:
             est["linhasDeLote"] += 1
-            src = codigo_lote(l.get("origem"))
-            dst = codigo_lote(l.get("destino")) or src
+            src = codigo_lote(l.get("sourceLotCode") or l.get("origem"))
+            dst = codigo_lote(l.get("treatedLotCode") or l.get("destino")) or src
             if not src:
                 continue
+            if l.get("sourceLotId"):
+                est["linhasComLotId"] += 1
             r = out.setdefault(src, {"ordens": [], "codigosOriginais": set(), "destinos": set(),
+                                     "idsDeclarados": set(), "tratadosDeclarados": set(),
                                      "cultivares": set(), "pms": set(), "pesosBag": set(), "qtdOrigem": 0.0,
                                      "qtdDestino": 0.0, "kg": 0.0, "concluidas": 0, "abertas": 0})
             r["codigosOriginais"].add(str(l.get("origem")))
             r["destinos"].add(dst)
+            if l.get("sourceLotId"):
+                r["idsDeclarados"].add(str(l.get("sourceLotId")))
+            if l.get("treatedLotId"):
+                r["tratadosDeclarados"].add(str(l.get("treatedLotId")))
             r["cultivares"].add((o.get("cultivar") or "").strip())
             if _num(l.get("pms")) is not None:
                 r["pms"].add(_num(l.get("pms")))
@@ -213,6 +234,7 @@ def resumir_tsi(ordens):
                 "data": o.get("data"),
                 "receita": o.get("receitaNome"),
                 "sourceLotCode": src, "treatedLotCode": dst,
+                "sourceLotId": l.get("sourceLotId"), "treatedLotId": l.get("treatedLotId"),
                 "qtdOrigem": _num(l.get("qtdOrigem")), "qtdDestino": _num(l.get("qtdDestino")),
                 "unidade": l.get("unidade"), "kg": _num(l.get("kg")), "pms": _num(l.get("pms")),
             })
@@ -303,7 +325,7 @@ def _diverg(lista, campo, texto, tipo="divergencia", **valores):
 
 
 def consolidar(qualidade, tsi, rastrel, apelidos, carimbo,
-               tsi_conectado=True, rastrel_conectado=True, safra=SAFRA_PADRAO, nomes=None):
+               tsi_conectado=True, rastrel_conectado=True, safra=SAFRA_ATIVA, nomes=None):
     """Junta os três resumos por código de lote → {lotId: documento}."""
     codigos = set(qualidade) | set(tsi or {}) | set(rastrel or {})
     docs = {}
@@ -395,6 +417,14 @@ def consolidar(qualidade, tsi, rastrel, apelidos, carimbo,
             if not t and tsi_conectado and any(k != "—" for k in r["tratamentos"]):
                 _diverg(div, "tratamento", "RASTREL indica tratamento, mas nenhuma ordem do TSI informa este lote",
                         tipo="aviso", rastrel=sorted(k for k in r["tratamentos"] if k != "—"))
+
+        # ---- TSI: identificador gravado pelo próprio TSI (sourceLotId) × o da Central
+        if t and t.get("idsDeclarados"):
+            outros = sorted(i for i in t["idsDeclarados"] if i != lot_id)
+            if outros:
+                _diverg(div, "lotId", "O TSI registrou este lote com outro identificador; na Central é "
+                        + lot_id + ("" if q else " (lote não encontrado na Qualidade)"),
+                        tipo="aviso", tsi=outros)
 
         # ---- TSI: origem/destino
         if t:
@@ -597,7 +627,11 @@ def sincronizar(simular=False):
     t, est = ({}, {})
     if tsi_on:
         t, est = resumir_tsi(ler_tsi())
-        print(f"TSI: {est['ordens']} ordens, {est['ordensComLote']} com lote → {len(t)} lotes")
+        print(f"TSI: {est['ordens']} ordens, {est['ordensComLote']} com lote → {len(t)} lotes"
+              f" · {est['linhasComLotId']} linhas com sourceLotId · {est['lotePendente']} abertas com LOTE PENDENTE")
+        outras = {k: v for k, v in est["safras"].items() if k != SAFRA_ATIVA}
+        if outras:
+            print(f"TSI: ATENÇÃO — ordens gravadas com safra diferente da ativa ({SAFRA_ATIVA}): {outras}")
     else:
         print("TSI: não conectado")
     r = {}
