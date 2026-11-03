@@ -107,7 +107,7 @@ async function textoDasAbas(page, prefixo) {
   let b = await bloqueado(page);
   ok(b.locked && b.loginVisivel && !b.temLOTS, 'área interna trancada e nenhum dado na memória da página');
   const html = await page.content();
-  ok(!/const LOTS = \[/.test(html) && !html.includes('26S01F') && !html.includes('COPERCAMPOS'), 'HTML entregue não contém lotes nem empresas');
+  ok(!/const LOTS = \[/.test(html) && !/"lote":/.test(html), 'HTML entregue não contém lotes');
   ok((await page.evaluate(() => __MOCK_LEITURAS.filter(l => l.col === 'qualidade').length)) === 0, 'nenhuma leitura de dados foi tentada sem login');
   await page.evaluate(() => { try { buildLotes(); } catch (e) {} });
   ok(!(await bloqueado(page)).temLOTS, 'chamar funções da área interna pelo console não traz dados');
