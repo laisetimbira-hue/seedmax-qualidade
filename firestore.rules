@@ -1,0 +1,74 @@
+rules_version = '2';
+
+// =====================================================================
+// SEEDMAX — regras de acesso do Firestore
+// ---------------------------------------------------------------------
+// Princípio: tudo é negado, a não ser o que está liberado abaixo.
+// Para ler qualquer dado operacional o usuário precisa:
+//   1. estar logado (request.auth != null);
+//   2. ter um documento users/{uid} com active == true;
+//   3. ter um perfil (role) autorizado para aquela coleção.
+// Nenhuma coleção operacional aceita escrita pelo navegador: quem grava
+// é o robô de atualização (Admin SDK, no GitHub Actions), que não passa
+// por estas regras.
+// =====================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function logado() {
+      return request.auth != null;
+    }
+    function cadastro() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    function ativo() {
+      return logado()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && cadastro().active == true;
+    }
+    function temPerfil(perfis) {
+      return ativo() && cadastro().role in perfis;
+    }
+    function admin() {
+      return temPerfil(['ADMIN']);
+    }
+    function usuarioValido(u) {
+      return u.keys().hasAll(['name', 'email', 'role', 'active'])
+        && u.keys().hasOnly(['name', 'email', 'role', 'active', 'createdAt', 'updatedAt'])
+        && u.name is string && u.email is string && u.active is bool
+        && u.role in ['ADMIN', 'QUALIDADE', 'TSI', 'RASTREL', 'VISUALIZACAO'];
+    }
+
+    // ---- usuários autorizados ---------------------------------------
+    // Cada pessoa lê só o próprio cadastro (para o app saber o perfil).
+    // Só ADMIN cria/edita/desativa. Ninguém consegue se autopromover.
+    match /users/{uid} {
+      allow get: if logado() && (request.auth.uid == uid || admin());
+      allow list: if admin();
+      allow create, update: if admin() && usuarioValido(request.resource.data);
+      allow delete: if admin() && uid != request.auth.uid;
+    }
+
+    // ---- Gestão de Qualidade ----------------------------------------
+    // Conjuntos de dados do dashboard (LOTS, SUMMARY, BENEF, ...),
+    // gravados apenas pelo robô.
+    match /qualidade/{doc} {
+      allow read: if temPerfil(['ADMIN', 'QUALIDADE', 'VISUALIZACAO']);
+      allow write: if false;
+    }
+
+    // ---- Central de Lotes (preparado, ainda não usado) --------------
+    // Um documento por lote, com o mesmo lotId usado em Qualidade, TSI,
+    // RASTREL e Expedição.
+    match /lots/{lotId} {
+      allow read: if temPerfil(['ADMIN', 'QUALIDADE', 'TSI', 'RASTREL', 'VISUALIZACAO']);
+      allow write: if false;
+    }
+
+    // ---- todo o resto: fechado ----------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
