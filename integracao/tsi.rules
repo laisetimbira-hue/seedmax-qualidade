@@ -1,0 +1,82 @@
+rules_version = '2';
+
+// =====================================================================
+// PROPOSTA — regras do Estoque TSI (projeto estoquetsi)
+// NÃO PUBLICADA. Testada no emulador (tests/regras-modulos.test.mjs).
+// Substitui: match /{document=**} { allow read, write: if request.auth != null; }
+//
+// Antes de publicar: criar usuarios/{uid} para cada uma das 4 contas
+// atuais (nome, email, perfil, ativo:true). Sem esse cadastro, a conta
+// perde o acesso.
+// Perfis (os mesmos nomes que o app do TSI já usa):
+//   administrador — tudo, inclusive apagar e gerenciar usuários
+//   operador      — lança e edita produtos, receitas, ordens, movimentações
+//   visualizador  — só consulta
+// =====================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function logado() { return request.auth != null; }
+    function cadastro() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data;
+    }
+    function ativo() {
+      return logado()
+        && exists(/databases/$(database)/documents/usuarios/$(request.auth.uid))
+        && cadastro().ativo == true;
+    }
+    function temPerfil(perfis) { return ativo() && cadastro().perfil in perfis; }
+    function admin() { return temPerfil(['administrador']); }
+    function opera() { return temPerfil(['administrador', 'operador']); }
+
+    function usuarioValido(u) {
+      return u.keys().hasAll(['nome', 'email', 'perfil', 'ativo'])
+        && u.nome is string && u.email is string && u.ativo is bool
+        && u.perfil in ['administrador', 'operador', 'visualizador'];
+    }
+
+    // cadastro de acesso: cada um lê o seu; só administrador gerencia
+    match /usuarios/{uid} {
+      allow get: if logado() && (request.auth.uid == uid || admin());
+      allow list: if admin();
+      allow create, update: if admin() && usuarioValido(request.resource.data);
+      allow delete: if admin() && uid != request.auth.uid;
+    }
+
+    // estoque de produtos de tratamento
+    match /produtos/{id} {
+      allow read: if ativo();
+      allow create, update: if opera();
+      allow delete: if admin();
+    }
+
+    // receitas (produto + dose por kg)
+    match /receitas/{id} {
+      allow read: if ativo();
+      allow create, update: if opera();
+      allow delete: if admin();
+    }
+
+    // ordens de tratamento (abertas importadas do PDF, fechadas tratadas)
+    match /lotesTratamento/{id} {
+      allow read: if ativo();
+      allow create, update: if opera();
+      allow delete: if admin();
+    }
+
+    // histórico de estoque: operador lança; desfazer/apagar só administrador
+    match /movimentacoes/{id} {
+      allow read: if ativo();
+      allow create: if opera()
+        && request.resource.data.quantidade is number
+        && request.resource.data.tipo in ['entrada', 'saida'];
+      allow update, delete: if admin();
+    }
+
+    // qualquer outra coleção: fechada
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
