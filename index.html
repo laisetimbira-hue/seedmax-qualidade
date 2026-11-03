@@ -1889,49 +1889,158 @@ html {
 
   </div>
 
-  <!-- CENTRAL DE LOTES (somente leitura: Qualidade + TSI + RASTREL) -->
+  <!-- CENTRAL DE LOTES V2 (somente leitura: Qualidade + TSI + RASTREL) -->
   <div class="page" id="page-central">
-    <div id="central-kpis" class="kpi-grid" style="margin-bottom:16px;"></div>
-    <div class="filter-bar">
-      <input type="text" id="central-search" placeholder="🔍 Buscar lote ou cultivar..." oninput="filtrarCentral()">
-      <select id="central-safra" onchange="filtrarCentral()"><option value="">Todas as Safras</option></select>
-      <select id="central-cultivar" onchange="filtrarCentral()"><option value="">Todos os Cultivares</option></select>
-      <select id="central-situacao" onchange="filtrarCentral()"><option value="">Todas as Situações</option></select>
-      <select id="central-qualidade" onchange="filtrarCentral()"><option value="">Qualidade: todos</option></select>
-      <select id="central-tsi" onchange="filtrarCentral()"><option value="">TSI: todos</option></select>
-      <select id="central-rastrel" onchange="filtrarCentral()"><option value="">RASTREL: todos</option></select>
-      <select id="central-div" onchange="filtrarCentral()">
-        <option value="">Divergências: todas</option>
-        <option value="com">Com divergência</option>
-        <option value="sem">Sem divergência</option>
-      </select>
-      <div class="count-badge">Exibindo <span id="central-count">—</span> lotes</div>
+    <style>
+      #central-kpis { grid-template-columns: repeat(2, 1fr); }
+      #central-kpis .kpi { cursor: pointer; transition: box-shadow .15s, border-color .15s; }
+      #central-kpis .kpi:hover { box-shadow: var(--shadow-md); }
+      #central-kpis .kpi.cl-ativo { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
+      #central-kpis .kpi .value { font-size: 1.6rem; }
+      @media (min-width: 640px) { #central-kpis { grid-template-columns: repeat(4, 1fr); } }
+      @media (min-width: 1280px) { #central-kpis { grid-template-columns: repeat(8, 1fr); } #central-kpis .kpi { padding: 14px 14px; } }
+      .cl-subtabs { display: flex; gap: 4px; border-bottom: 1px solid var(--borda); margin: 0 0 14px; }
+      .cl-subtabs .tab { padding: 9px 14px; font-size: 0.9rem; }
+      .filter-bar .cl-check input { width: auto; min-width: 0; padding: 0; margin: 0; flex: 0 0 auto; accent-color: var(--accent); }
+      .cl-check { display: inline-flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--texto2); white-space: nowrap; cursor: pointer; }
+      .cl-btn { border: 1px solid var(--borda2); background: var(--card); color: var(--texto); border-radius: 8px; padding: 8px 12px; font-size: 0.82rem; font-weight: 600; cursor: pointer; font-family: var(--font-body); }
+      .cl-btn:hover { background: var(--bg3); }
+      .cl-niv { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px; font-size: 0.7rem; font-weight: 800; margin: 0 1px; }
+      .cl-niv-D { background: var(--critico-bg); color: var(--critico); border: 1px solid #FECACA; }
+      .cl-niv-A { background: var(--regular-bg); color: var(--regular); border: 1px solid #FDE68A; }
+      .cl-niv-P { background: var(--bg3); color: var(--texto2); border: 1px solid var(--borda); }
+      #central-tbody tr.cl-row { cursor: pointer; }
+      .cl-mais { text-align: center; padding: 12px; }
+      /* modal do lote */
+      #cl-modal { display: none; position: fixed; inset: 0; z-index: 99990; background: rgba(10,16,30,0.6); backdrop-filter: blur(3px); align-items: flex-start; justify-content: center; overflow-y: auto; padding: 24px 12px; }
+      #cl-modal.aberto { display: flex; }
+      .cl-box { background: var(--card); color: var(--texto); border-radius: 14px; width: 100%; max-width: 920px; box-shadow: 0 24px 64px rgba(0,0,0,0.25); animation: modalIn 0.2s ease; }
+      .cl-head { display: flex; gap: 12px; align-items: flex-start; padding: 18px 20px 12px; border-bottom: 1px solid var(--borda); position: sticky; top: 0; background: var(--card); border-radius: 14px 14px 0 0; z-index: 1; }
+      .cl-head h2 { font-family: var(--font-head); font-size: 1.7rem; line-height: 1; margin: 0; letter-spacing: -0.3px; }
+      .cl-x { margin-left: auto; border: 1px solid var(--borda); background: var(--bg3); border-radius: 8px; width: 34px; height: 34px; cursor: pointer; font-size: 1rem; color: var(--texto2); flex: 0 0 auto; }
+      .cl-body { padding: 14px 20px 22px; }
+      .cl-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px 16px; margin-bottom: 16px; }
+      .cl-meta .k, .cl-kv .k { font-size: 0.66rem; text-transform: uppercase; letter-spacing: .6px; color: var(--texto2); font-weight: 700; }
+      .cl-meta .v { font-weight: 700; font-size: 0.95rem; }
+      .cl-sec { margin-top: 18px; }
+      .cl-sec h3 { font-family: var(--font-head); font-size: 1.05rem; letter-spacing: .4px; text-transform: uppercase; margin: 0 0 8px; color: var(--texto); display: flex; align-items: center; gap: 8px; }
+      .cl-kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px 16px; background: var(--bg3); border-radius: 10px; padding: 12px 14px; }
+      .cl-kv .v { font-weight: 700; font-size: 0.92rem; }
+      .cl-tl { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; margin: 4px 0 6px; }
+      .cl-tl-step { position: relative; text-align: center; padding: 0 6px; }
+      .cl-tl-step::before { content: ''; position: absolute; top: 17px; left: -50%; width: 100%; height: 3px; background: var(--borda); z-index: 0; }
+      .cl-tl-step:first-child::before { display: none; }
+      .cl-tl-step.s-CONCLUIDO::before { background: var(--excelente); }
+      .cl-tl-dot { position: relative; z-index: 1; width: 36px; height: 36px; border-radius: 50%; margin: 0 auto 6px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 1rem; border: 2px solid; background: var(--card); }
+      .s-CONCLUIDO .cl-tl-dot { background: var(--excelente); border-color: var(--excelente); color: #fff; }
+      .s-EM_ANDAMENTO .cl-tl-dot { background: var(--bom-bg); border-color: var(--bom); color: var(--bom); }
+      .s-PENDENTE .cl-tl-dot { background: var(--regular-bg); border-color: var(--regular); color: var(--regular); }
+      .s-INDETERMINADO .cl-tl-dot { background: var(--bg3); border-color: var(--borda2); color: var(--texto2); border-style: dashed; }
+      .cl-tl-nome { font-family: var(--font-head); font-weight: 800; letter-spacing: .5px; font-size: 0.9rem; }
+      .cl-tl-est { font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; margin: 2px 0; }
+      .s-CONCLUIDO .cl-tl-est { color: var(--excelente); } .s-EM_ANDAMENTO .cl-tl-est { color: var(--bom); }
+      .s-PENDENTE .cl-tl-est { color: var(--regular); } .s-INDETERMINADO .cl-tl-est { color: var(--texto2); }
+      .cl-tl-txt { font-size: 0.74rem; color: var(--texto2); line-height: 1.35; }
+      .cl-al { border-radius: 9px; padding: 9px 12px; margin-bottom: 6px; font-size: 0.84rem; line-height: 1.4; border: 1px solid; }
+      .cl-al small { display: block; color: var(--texto2); margin-top: 2px; }
+      .cl-al-D { background: var(--critico-bg); border-color: #FECACA; } .cl-al-D b { color: var(--critico); }
+      .cl-al-A { background: var(--regular-bg); border-color: #FDE68A; } .cl-al-A b { color: var(--regular); }
+      .cl-al-P { background: var(--bg3); border-color: var(--borda); } .cl-al-P b { color: var(--texto2); }
+      .cl-ord { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+      .cl-ord th { text-align: left; font-size: 0.66rem; text-transform: uppercase; letter-spacing: .5px; color: var(--texto2); padding: 6px 8px; border-bottom: 1px solid var(--borda); background: var(--bg3); white-space: nowrap; }
+      .cl-ord td { padding: 7px 8px; border-bottom: 1px solid var(--borda); white-space: nowrap; }
+      .cl-mono { font-family: var(--font-mono); font-size: 0.76rem; }
+      @media (max-width: 639px) {
+        #central-kpis { gap: 8px; }
+        #central-kpis .kpi { padding: 10px 12px; }
+        #central-kpis .kpi .label { font-size: 0.64rem; margin-bottom: 4px; }
+        #central-kpis .kpi .value { font-size: 1.3rem; }
+        #central-kpis .kpi .sub { display: none; }
+        #cl-modal { padding: 0; }
+        .cl-box { border-radius: 0; min-height: 100%; max-width: none; }
+        .cl-head { border-radius: 0; padding: 14px 14px 10px; }
+        .cl-body { padding: 12px 14px 28px; }
+        .cl-tl { grid-template-columns: 1fr; gap: 10px; }
+        .cl-tl-step { display: grid; grid-template-columns: 36px 1fr; gap: 0 10px; text-align: left; padding: 0; }
+        .cl-tl-step::before { top: -10px; left: 17px; width: 3px; height: 14px; }
+        .cl-tl-dot { margin: 0; grid-row: span 3; }
+      }
+    </style>
+    <div id="central-kpis" class="kpi-grid" style="margin-bottom:14px;"></div>
+    <div class="cl-subtabs">
+      <div class="tab active" id="cl-tab-lotes" onclick="centralVista('lotes')">Lotes</div>
+      <div class="tab" id="cl-tab-cultivar" onclick="centralVista('cultivar')">Resumo por cultivar</div>
     </div>
-    <div id="central-aviso" style="display:none;font-size:0.78rem;color:var(--texto2);margin:-6px 0 12px 2px;"></div>
-    <div class="panel">
-      <div class="lotes-table-wrap">
-        <table id="central-table">
-          <thead>
-            <tr>
-              <th onclick="ordenarCentral('lotCode')">Lote</th>
-              <th onclick="ordenarCentral('cultivar')">Cultivar</th>
-              <th onclick="ordenarCentral('categoria')" class="col-hide-mobile">Cat.</th>
-              <th onclick="ordenarCentral('peneira')" class="col-hide-mobile">Pen.</th>
-              <th onclick="ordenarCentral('qualidadeClasse')">Qualidade</th>
-              <th onclick="ordenarCentral('tsiStatus')">TSI</th>
-              <th onclick="ordenarCentral('taggedBags')" class="num">Bags</th>
-              <th onclick="ordenarCentral('rastrelStatus')">RASTREL</th>
-              <th onclick="ordenarCentral('situacao')">Situação</th>
-              <th style="width:28px;" title="Divergências">⚠️</th>
-            </tr>
-          </thead>
-          <tbody id="central-tbody"><tr><td colspan="10" style="padding:18px;color:var(--texto2);">Carregando…</td></tr></tbody>
-        </table>
+    <div id="central-vista-lotes">
+      <div class="filter-bar">
+        <input type="text" id="central-search" placeholder="🔍 Lote, cultivar, nome comercial ou N° da ordem TSI..." oninput="filtrarCentralDebounce()">
+        <select id="central-safra" onchange="filtrarCentral()"><option value="">Todas as Safras</option></select>
+        <select id="central-cultivar" onchange="filtrarCentral()"><option value="">Todos os Cultivares</option></select>
+        <select id="central-situacao" onchange="filtrarCentral()"><option value="">Todas as Situações</option></select>
+        <select id="central-qualidade" onchange="filtrarCentral()"><option value="">Qualidade: todos</option></select>
+        <select id="central-tsi" onchange="filtrarCentral()"><option value="">TSI: todos</option></select>
+        <select id="central-rastrel" onchange="filtrarCentral()"><option value="">RASTREL: todos</option></select>
+        <select id="central-div" onchange="filtrarCentral()">
+          <option value="">Alertas: todos</option>
+          <option value="DIVERGENCIA">Com divergência</option>
+          <option value="AVISO">Com aviso</option>
+          <option value="PENDENCIA">Com pendência informacional</option>
+          <option value="NENHUM">Sem alertas</option>
+        </select>
+        <label class="cl-check"><input type="checkbox" id="central-so-alerta" onchange="filtrarCentral()"> Só com alerta (divergência ou aviso)</label>
+        <label class="cl-check"><input type="checkbox" id="central-multi" onchange="filtrarCentral()"> Em mais de um módulo</label>
+        <button class="cl-btn" type="button" onclick="limparFiltrosCentral()">Limpar filtros</button>
+        <div class="count-badge">Exibindo <span id="central-count">—</span> lotes</div>
+      </div>
+      <div id="central-aviso" style="display:none;font-size:0.78rem;color:var(--texto2);margin:-6px 0 12px 2px;"></div>
+      <div class="panel">
+        <div class="lotes-table-wrap">
+          <table id="central-table">
+            <thead>
+              <tr>
+                <th onclick="ordenarCentral('lotCode')">Lote</th>
+                <th onclick="ordenarCentral('cultivar')">Cultivar</th>
+                <th onclick="ordenarCentral('categoria')" class="col-hide-mobile">Cat.</th>
+                <th onclick="ordenarCentral('peneira')" class="col-hide-mobile">Pen.</th>
+                <th onclick="ordenarCentral('qualidadeClasse')">Qualidade</th>
+                <th onclick="ordenarCentral('tsiStatus')">TSI</th>
+                <th onclick="ordenarCentral('taggedBags')" class="num">Bags</th>
+                <th onclick="ordenarCentral('rastrelStatus')">RASTREL</th>
+                <th onclick="ordenarCentral('situacao')">Situação</th>
+                <th onclick="ordenarCentral('_peso')" title="Alertas: divergência · aviso · pendência">Alertas</th>
+              </tr>
+            </thead>
+            <tbody id="central-tbody"><tr><td colspan="10" style="padding:18px;color:var(--texto2);">Carregando…</td></tr></tbody>
+          </table>
+        </div>
+        <div id="central-mais" class="cl-mais" style="display:none;"></div>
       </div>
     </div>
-    <div style="font-size:0.72rem;color:var(--texto2);margin-top:8px;">
+    <div id="central-vista-cultivar" style="display:none;">
+      <div style="font-size:0.78rem;color:var(--texto2);margin:0 0 10px 2px;">Clique em uma cultivar para ver os lotes dela na tabela. Considera a safra escolhida no filtro.</div>
+      <div class="panel">
+        <div class="lotes-table-wrap">
+          <table id="central-cv-table">
+            <thead>
+              <tr>
+                <th>Cultivar</th><th class="num">Lotes</th><th class="num">Aprovados</th><th class="num">Liberados TSI</th>
+                <th class="num">Em TSI</th><th class="num">Aguard. RASTREL</th><th class="num">Rastreando</th><th class="num">Prontos</th>
+                <th class="num">Indeterm.</th><th class="num" title="Lotes com divergência">Diverg.</th><th class="num" title="Lotes com aviso">Aviso</th><th class="num" title="Lotes com pendência informacional">Pend.</th>
+              </tr>
+            </thead>
+            <tbody id="central-cv-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div style="font-size:0.72rem;color:var(--texto2);margin-top:8px;line-height:1.5;">
       Somente consulta. Cada módulo continua dono dos seus dados: Qualidade (cultivar, categoria, peneira, resultados, classe),
-      TSI (ordens, receitas, tratamento) e RASTREL (bags, tags, movimentação, expedição). <span id="central-atualizado"></span>
+      TSI (ordens, receitas, tratamento) e RASTREL (bags, tags, movimentação, expedição).
+      Alertas: <span class="cl-niv cl-niv-D">D</span> divergência entre módulos · <span class="cl-niv cl-niv-A">A</span> aviso · <span class="cl-niv cl-niv-P">P</span> pendência informacional (falta dado, não é erro).
+      <span id="central-atualizado"></span>
+    </div>
+    <div id="cl-modal" onclick="if(event.target===this) fecharLoteCentral()" role="dialog" aria-modal="true" aria-labelledby="cl-titulo">
+      <div class="cl-box" id="cl-box"></div>
     </div>
   </div>
 
@@ -5479,20 +5588,44 @@ window.addEventListener('load', function() {
   </svg>
 </button>
 <script type="text/seedmax-app">
-// =================== CENTRAL DE LOTES (somente leitura) ===================
+// =================== CENTRAL DE LOTES V2 (somente leitura) ===================
 // Lê o índice lots/{lotId} montado pelo robô (scripts/central_lotes.py).
 // Esta tela NÃO grava nada: as regras do Firestore negam qualquer escrita
-// em lots/ pelo navegador.
-let CENTRAL = null, centralCarregando = false, centralOrdem = { campo: 'lotCode', asc: true };
+// em lots/ pelo navegador. Uma leitura por abertura da aba (sem listeners).
+let CENTRAL = null, CENTRAL_IDX = {}, centralCarregando = false, centralOrdem = { campo: 'lotCode', asc: true };
+let centralFiltroCard = '', centralLimite = 300, centralLista = [];
+const CENTRAL_PAGINA = 300;
 const CENTRAL_SIT_CLASSE = {
   'PRONTO': 'rank-A', 'RASTREANDO': 'rank-B', 'AGUARDANDO RASTREL': 'rank-BV', 'EM TSI': 'rank-B',
   'LIBERADO PARA TSI': 'rank-B', 'QUALIDADE PENDENTE': 'rank-C', 'INDETERMINADO': 'rank-X'
 };
 const CENTRAL_SIT_ORDEM = ['QUALIDADE PENDENTE','LIBERADO PARA TSI','EM TSI','AGUARDANDO RASTREL','RASTREANDO','PRONTO','INDETERMINADO'];
 const CENTRAL_Q_CLASSE = { 'APROVADO': 'rank-A', 'CONDICIONAL': 'rank-C', 'REPROVADO': 'rank-D', 'PENDENTE': 'rank-X', 'NÃO ENCONTRADO': 'rank-X' };
+const CL_NIVEL = { DIVERGENCIA: { l: 'D', nome: 'Divergência', titulo: 'Divergências entre módulos' },
+                   AVISO: { l: 'A', nome: 'Aviso', titulo: 'Avisos' },
+                   PENDENCIA: { l: 'P', nome: 'Pendência informacional', titulo: 'Pendências informacionais' } };
+const CL_ETAPA_EST = { CONCLUIDO: ['✓', 'Concluído'], EM_ANDAMENTO: ['▶', 'Em andamento'], PENDENTE: ['…', 'Pendente'], INDETERMINADO: ['?', 'Indeterminado'] };
 
 function cEsc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function cNum(v, d) { return v == null || v === '' ? '—' : Number(v).toLocaleString('pt-BR', { maximumFractionDigits: d == null ? 1 : d }); }
+function cNorm(s) { return String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase(); }
+
+// nível de um alerta (documentos antigos, sem "nivel", caem em DIVERGENCIA/AVISO pelo "tipo")
+function clNivel(d) { return d.nivel || (d.tipo === 'aviso' ? 'AVISO' : 'DIVERGENCIA'); }
+
+// pré-calcula uma vez por lote o que a busca, os filtros e a ordenação usam
+function prepararLoteCentral(x) {
+  const ordens = (x.tsi && x.tsi.ordens) || [];
+  const n = { DIVERGENCIA: 0, AVISO: 0, PENDENCIA: 0 };
+  (x.divergencias || []).forEach(d => { n[clNivel(d)] = (n[clNivel(d)] || 0) + 1; });
+  x._n = n;
+  x._peso = n.DIVERGENCIA * 10000 + n.AVISO * 100 + n.PENDENCIA;
+  x._busca = cNorm([x.lotCode, x.lotId, x.cultivar, x.cultivarNome,
+    ordens.map(o => o.ordem + ' ' + (o.treatedLotCode || '')).join(' ')].join(' | '));
+  x._ordens = ordens.map(o => String(o.ordem));
+  x._multi = (x.modulos || []).length > 1;
+  return x;
+}
 
 async function buildCentralLotes(forcar) {
   if ((CENTRAL && !forcar) || centralCarregando) return;
@@ -5500,52 +5633,64 @@ async function buildCentralLotes(forcar) {
   const tb = document.getElementById('central-tbody');
   try {
     const snap = await smDb.collection('lots').get();
-    CENTRAL = snap.docs.map(d => d.data()).filter(x => x && x.lotId && x.presente !== false);
+    CENTRAL = snap.docs.map(d => d.data()).filter(x => x && x.lotId && x.presente !== false).map(prepararLoteCentral);
   } catch (e) {
     tb.innerHTML = '<tr><td colspan="10" style="padding:18px;color:var(--critico);">Não foi possível carregar a Central de Lotes (' + cEsc(e.code || e.message) + ').</td></tr>';
     centralCarregando = false; return;
   }
   centralCarregando = false;
+  CENTRAL_IDX = {}; CENTRAL.forEach(x => { CENTRAL_IDX[x.lotId] = x; });
   if (!CENTRAL.length) {
     tb.innerHTML = '<tr><td colspan="10" style="padding:18px;color:var(--texto2);">A Central de Lotes ainda não foi sincronizada.</td></tr>';
     return;
   }
-  const opc = (id, valores, rotulo) => {
+  const opc = (id, valores, rotulo, nomeDe) => {
     const el = document.getElementById(id), atual = el.value;
-    el.innerHTML = '<option value="">' + rotulo + '</option>' + valores.map(v => '<option value="' + cEsc(v) + '">' + cEsc(v) + '</option>').join('');
+    el.innerHTML = '<option value="">' + rotulo + '</option>' + valores.map(v => '<option value="' + cEsc(v) + '">' + cEsc(nomeDe ? nomeDe(v) : v) + '</option>').join('');
     el.value = atual;
   };
   const uniq = f => [...new Set(CENTRAL.map(f).filter(v => v != null && v !== ''))].sort((a, b) => String(a).localeCompare(String(b), 'pt-BR'));
-  opc('central-safra', uniq(x => x.crop), 'Todas as Safras');
-  opc('central-cultivar', uniq(x => x.cultivar), 'Todos os Cultivares');
+  const nomeCv = {}; CENTRAL.forEach(x => { if (x.cultivar && x.cultivarNome) nomeCv[x.cultivar] = x.cultivarNome; });
+  opc('central-safra', uniq(x => x.crop), 'Todas as Safras', v => v === 'SEMSAFRA' ? 'Sem safra (fora da Qualidade)' : v);
+  opc('central-cultivar', uniq(x => x.cultivar), 'Todos os Cultivares', v => nomeCv[v] ? v + ' — ' + nomeCv[v] : v);
   opc('central-situacao', CENTRAL_SIT_ORDEM.filter(s => CENTRAL.some(x => x.situacao === s)), 'Todas as Situações');
   opc('central-qualidade', uniq(x => x.qualidadeStatus), 'Qualidade: todos');
   opc('central-tsi', uniq(x => x.tsiStatus), 'TSI: todos');
   opc('central-rastrel', uniq(x => x.rastrelStatus), 'RASTREL: todos');
   const datas = uniq(x => x.lastUpdate);
-  document.getElementById('central-atualizado').textContent = datas.length ? 'Sincronizado em ' + datas[datas.length - 1] + '.' : '';
+  document.getElementById('central-atualizado').textContent = datas.length ? 'Última sincronização com mudança: ' + datas[datas.length - 1] + '.' : '';
   const naoConectados = ['TSI', 'RASTREL'].filter(m => CENTRAL.every(x => (m === 'TSI' ? x.tsiStatus : x.rastrelStatus) === 'NÃO CONECTADO'));
   const aviso = document.getElementById('central-aviso');
   aviso.style.display = naoConectados.length ? 'block' : 'none';
   aviso.textContent = naoConectados.length ? 'ℹ️ ' + naoConectados.join(' e ') + ' ainda não conectado(s) à Central — a situação desses lotes fica INDETERMINADO até a conexão.' : '';
+  renderCentralKpis();
   filtrarCentral();
 }
 
 function ordenarCentral(campo) {
-  centralOrdem = { campo, asc: centralOrdem.campo === campo ? !centralOrdem.asc : true };
+  centralOrdem = { campo, asc: centralOrdem.campo === campo ? !centralOrdem.asc : (campo !== '_peso') };
   filtrarCentral();
+}
+
+let _centralTimer = null;
+function filtrarCentralDebounce() { clearTimeout(_centralTimer); _centralTimer = setTimeout(filtrarCentral, 180); }
+
+function centralFiltrados(ignorarCultivar) {
+  const val = id => document.getElementById(id).value;
+  const termos = cNorm(document.getElementById('central-search').value.trim()).split(/\s+/).filter(Boolean);
+  const [sf, cv, si, ql, ts, rs, nv] = ['central-safra','central-cultivar','central-situacao','central-qualidade','central-tsi','central-rastrel','central-div'].map(val);
+  const soAlerta = document.getElementById('central-so-alerta').checked, multi = document.getElementById('central-multi').checked;
+  return CENTRAL.filter(x =>
+    (!termos.length || termos.every(t => x._busca.includes(t) || x._ordens.includes(t))) &&
+    (!sf || x.crop === sf) && (ignorarCultivar || !cv || x.cultivar === cv) && (!si || x.situacao === si) &&
+    (!ql || x.qualidadeStatus === ql) && (!ts || x.tsiStatus === ts) && (!rs || x.rastrelStatus === rs) &&
+    (!nv || (nv === 'NENHUM' ? !x._peso : x._n[nv] > 0)) &&
+    (!soAlerta || x._n.DIVERGENCIA + x._n.AVISO > 0) && (!multi || x._multi));
 }
 
 function filtrarCentral() {
   if (!CENTRAL) return;
-  const val = id => document.getElementById(id).value;
-  const busca = document.getElementById('central-search').value.trim().toUpperCase();
-  const [sf, cv, si, ql, ts, rs, dv] = ['central-safra','central-cultivar','central-situacao','central-qualidade','central-tsi','central-rastrel','central-div'].map(val);
-  let lista = CENTRAL.filter(x =>
-    (!busca || String(x.lotCode).toUpperCase().includes(busca) || String(x.cultivar || '').toUpperCase().includes(busca) || String(x.cultivarNome || '').toUpperCase().includes(busca)) &&
-    (!sf || x.crop === sf) && (!cv || x.cultivar === cv) && (!si || x.situacao === si) &&
-    (!ql || x.qualidadeStatus === ql) && (!ts || x.tsiStatus === ts) && (!rs || x.rastrelStatus === rs) &&
-    (!dv || (dv === 'com') === ((x.divergencias || []).some(d => d.tipo !== 'aviso'))));
+  const lista = centralFiltrados(false);
   const { campo, asc } = centralOrdem;
   lista.sort((a, b) => {
     let va = a[campo], vb = b[campo];
@@ -5554,67 +5699,229 @@ function filtrarCentral() {
     const r = (typeof va === 'number' && typeof vb === 'number') ? va - vb : String(va).localeCompare(String(vb), 'pt-BR', { numeric: true });
     return asc ? r : -r;
   });
+  centralLista = lista; centralLimite = CENTRAL_PAGINA;
   document.getElementById('central-count').textContent = lista.length;
-  renderCentralKpis();
-  document.getElementById('central-tbody').innerHTML = lista.map((x, i) => {
-    const divs = (x.divergencias || []);
-    const nDiv = divs.filter(d => d.tipo !== 'aviso').length;
-    const bags = x.rastrel ? (x.taggedBags + (x.totalBags ? ' / ' + x.totalBags : '')) : (x.totalBags != null ? '0 / ' + x.totalBags : '—');
-    const q = x.qualidadeStatus === 'NÃO ENCONTRADO' ? '<span class="rank-badge rank-X">não encontrado</span>'
-      : '<span class="rank-badge ' + (CENTRAL_Q_CLASSE[x.qualidadeStatus] || 'rank-X') + '">' + cEsc(x.qualidadeClasse ? x.qualidadeClasse + ' · ' : '') + cEsc(x.qualidadeStatus.toLowerCase()) + '</span>';
-    return '<tr style="cursor:pointer;" onclick="detalheCentral(' + i + ')" data-lot="' + cEsc(x.lotId) + '">' +
-      '<td style="font-weight:700;">' + cEsc(x.lotCode) + (x.crop === 'SEMSAFRA' ? ' <span style="color:var(--texto2);font-weight:400;">(sem safra)</span>' : '') + '</td>' +
-      '<td>' + cEsc(x.cultivar || '—') + (x.cultivarNome ? ' <span style="color:var(--texto2);">' + cEsc(x.cultivarNome) + '</span>' : '') + '</td>' +
-      '<td class="col-hide-mobile">' + cEsc(x.categoria || '—') + '</td>' +
-      '<td class="col-hide-mobile">' + cEsc(x.peneira == null ? '—' : x.peneira) + '</td>' +
-      '<td>' + q + '</td>' +
-      '<td>' + cEsc(x.tsiStatus) + '</td>' +
-      '<td class="num">' + cEsc(bags) + '</td>' +
-      '<td>' + cEsc(x.rastrelStatus) + '</td>' +
-      '<td><span class="rank-badge ' + (CENTRAL_SIT_CLASSE[x.situacao] || 'rank-X') + '" title="' + cEsc(x.motivo) + '">' + cEsc(x.situacao) + '</span></td>' +
-      '<td style="text-align:center;" title="' + cEsc(divs.map(d => d.texto).join('\n')) + '">' + (nDiv ? '<b style="color:var(--critico);">' + nDiv + '</b>' : (divs.length ? '<span style="color:var(--texto2);">·</span>' : '')) + '</td>' +
-      '</tr><tr id="central-det-' + i + '" style="display:none;"><td colspan="10" style="white-space:normal;background:var(--bg3);padding:12px 14px;"></td></tr>';
-  }).join('') || '<tr><td colspan="10" style="padding:18px;color:var(--texto2);">Nenhum lote com esses filtros.</td></tr>';
-  window.__centralLista = lista;
+  marcarCardCentral();
+  renderLinhasCentral();
+  if (document.getElementById('central-vista-cultivar').style.display !== 'none') renderResumoCultivar();
 }
 
+function linhaCentral(x) {
+  const n = x._n;
+  const bags = x.rastrel ? (x.taggedBags + (x.totalBags ? ' / ' + x.totalBags : '')) : (x.totalBags != null ? '0 / ' + x.totalBags : '—');
+  const q = x.qualidadeStatus === 'NÃO ENCONTRADO' ? '<span class="rank-badge rank-X">não encontrado</span>'
+    : '<span class="rank-badge ' + (CENTRAL_Q_CLASSE[x.qualidadeStatus] || 'rank-X') + '">' + cEsc(x.qualidadeClasse ? x.qualidadeClasse + ' · ' : '') + cEsc(String(x.qualidadeStatus || '').toLowerCase()) + '</span>';
+  const al = (n.DIVERGENCIA ? '<span class="cl-niv cl-niv-D">' + n.DIVERGENCIA + '</span>' : '') +
+             (n.AVISO ? '<span class="cl-niv cl-niv-A">' + n.AVISO + '</span>' : '') +
+             (n.PENDENCIA ? '<span class="cl-niv cl-niv-P">' + n.PENDENCIA + '</span>' : '');
+  return '<tr class="cl-row" data-lot="' + cEsc(x.lotId) + '">' +
+    '<td style="font-weight:700;">' + cEsc(x.lotCode) + (x.crop === 'SEMSAFRA' ? ' <span style="color:var(--texto2);font-weight:400;">(sem safra)</span>' : '') + '</td>' +
+    '<td>' + cEsc(x.cultivar || '—') + (x.cultivarNome ? ' <span style="color:var(--texto2);">' + cEsc(x.cultivarNome) + '</span>' : '') + '</td>' +
+    '<td class="col-hide-mobile">' + cEsc(x.categoria || '—') + '</td>' +
+    '<td class="col-hide-mobile">' + cEsc(x.peneira == null ? '—' : x.peneira) + '</td>' +
+    '<td>' + q + '</td>' +
+    '<td>' + cEsc(x.tsiStatus) + '</td>' +
+    '<td class="num">' + cEsc(bags) + '</td>' +
+    '<td>' + cEsc(x.rastrelStatus) + '</td>' +
+    '<td><span class="rank-badge ' + (CENTRAL_SIT_CLASSE[x.situacao] || 'rank-X') + '" title="' + cEsc(x.motivo) + '">' + cEsc(x.situacao) + '</span></td>' +
+    '<td style="white-space:nowrap;">' + al + '</td></tr>';
+}
+
+function renderLinhasCentral() {
+  const tb = document.getElementById('central-tbody');
+  const vis = centralLista.slice(0, centralLimite);
+  tb.innerHTML = vis.map(linhaCentral).join('') || '<tr><td colspan="10" style="padding:18px;color:var(--texto2);">Nenhum lote com esses filtros.</td></tr>';
+  const mais = document.getElementById('central-mais'), resta = centralLista.length - vis.length;
+  mais.style.display = resta > 0 ? 'block' : 'none';
+  mais.innerHTML = resta > 0 ? '<button class="cl-btn" type="button" onclick="maisLinhasCentral()">Mostrar mais ' + Math.min(resta, CENTRAL_PAGINA) + ' (faltam ' + resta + ')</button>' : '';
+}
+function maisLinhasCentral() {
+  const tb = document.getElementById('central-tbody');
+  const ini = centralLimite; centralLimite += CENTRAL_PAGINA;
+  tb.insertAdjacentHTML('beforeend', centralLista.slice(ini, centralLimite).map(linhaCentral).join(''));
+  const mais = document.getElementById('central-mais'), resta = centralLista.length - Math.min(centralLimite, centralLista.length);
+  mais.style.display = resta > 0 ? 'block' : 'none';
+  mais.innerHTML = resta > 0 ? '<button class="cl-btn" type="button" onclick="maisLinhasCentral()">Mostrar mais ' + Math.min(resta, CENTRAL_PAGINA) + ' (faltam ' + resta + ')</button>' : '';
+}
+// um único ouvinte de clique para a tabela inteira (em vez de um por linha)
+document.getElementById('central-tbody').addEventListener('click', ev => {
+  const tr = ev.target.closest('tr.cl-row'); if (tr) abrirLoteCentral(tr.getAttribute('data-lot'));
+});
+
+// ---------- cards (calculados uma vez, sobre todos os lotes) ----------
+const CL_CARDS = [
+  { id: '', rot: 'Total de lotes', cls: '' },
+  { id: 'LIBERADO PARA TSI', rot: 'Liberados p/ TSI', cls: '' },
+  { id: 'EM TSI', rot: 'Em TSI', cls: '' },
+  { id: 'AGUARDANDO RASTREL', rot: 'Aguardando RASTREL', cls: 'warn' },
+  { id: 'RASTREANDO', rot: 'Rastreando', cls: '' },
+  { id: 'PRONTO', rot: 'Prontos', cls: 'accent' },
+  { id: 'INDETERMINADO', rot: 'Indeterminados', cls: '' },
+  { id: '#DIV', rot: 'Com divergência', cls: 'danger' }
+];
 function renderCentralKpis() {
-  const cont = {};
-  CENTRAL.forEach(x => { cont[x.situacao] = (cont[x.situacao] || 0) + 1; });
-  const multi = CENTRAL.filter(x => (x.modulos || []).length > 1).length;
-  const comDiv = CENTRAL.filter(x => (x.divergencias || []).some(d => d.tipo !== 'aviso')).length;
-  const k = (rot, v, sub, cls) => '<div class="kpi ' + (cls || '') + '"><div class="label">' + rot + '</div><div class="value" style="font-size:1.6rem;">' + v + '</div>' + (sub ? '<div class="sub">' + sub + '</div>' : '') + '</div>';
-  document.getElementById('central-kpis').innerHTML =
-    k('Lotes', CENTRAL.length, multi + ' em mais de um módulo') +
-    k('Prontos', cont['PRONTO'] || 0, 'TSI + todos os bags com tag', 'accent') +
-    k('Em andamento', (cont['LIBERADO PARA TSI'] || 0) + (cont['EM TSI'] || 0) + (cont['AGUARDANDO RASTREL'] || 0) + (cont['RASTREANDO'] || 0), 'liberado, em TSI ou rastreando') +
-    k('Qualidade pendente', cont['QUALIDADE PENDENTE'] || 0, 'não liberados', 'warn') +
-    k('Indeterminados', cont['INDETERMINADO'] || 0, 'dados insuficientes') +
-    k('Com divergência', comDiv, 'entre módulos', comDiv ? 'danger' : '');
+  const cont = {}; let multi = 0, div = 0, avi = 0, pen = 0;
+  CENTRAL.forEach(x => { cont[x.situacao] = (cont[x.situacao] || 0) + 1; if (x._multi) multi++;
+    if (x._n.DIVERGENCIA) div++; if (x._n.AVISO) avi++; if (x._n.PENDENCIA) pen++; });
+  const sub = { '': multi + ' em mais de um módulo', '#DIV': avi + ' c/ aviso · ' + pen + ' c/ pendência',
+    'LIBERADO PARA TSI': 'aprovados, sem ordem TSI', 'EM TSI': 'ordem aberta', 'AGUARDANDO RASTREL': 'TSI concluído, sem tag',
+    'RASTREANDO': 'parte dos bags com tag', 'PRONTO': 'TSI + todos os bags com tag', 'INDETERMINADO': 'dados insuficientes' };
+  document.getElementById('central-kpis').innerHTML = CL_CARDS.map(c => {
+    const v = c.id === '' ? CENTRAL.length : c.id === '#DIV' ? div : (cont[c.id] || 0);
+    return '<div class="kpi ' + c.cls + '" data-card="' + cEsc(c.id) + '" role="button" tabindex="0" onclick="clicarCardCentral(this.dataset.card)" onkeydown="if(event.key===\'Enter\')clicarCardCentral(this.dataset.card)">' +
+      '<div class="label">' + c.rot + '</div><div class="value">' + v + '</div><div class="sub">' + sub[c.id] + '</div></div>';
+  }).join('');
+}
+function clicarCardCentral(id) {
+  const si = document.getElementById('central-situacao'), dv = document.getElementById('central-div');
+  if (id === '') { limparFiltrosCentral(); return; }
+  if (id === '#DIV') { dv.value = (dv.value === 'DIVERGENCIA') ? '' : 'DIVERGENCIA'; }
+  else { si.value = (si.value === id) ? '' : id; }
+  centralVista('lotes');
+  filtrarCentral();
+}
+function marcarCardCentral() {
+  const si = document.getElementById('central-situacao').value, dv = document.getElementById('central-div').value;
+  document.querySelectorAll('#central-kpis .kpi').forEach(k => {
+    const id = k.dataset.card;
+    k.classList.toggle('cl-ativo', id === '#DIV' ? dv === 'DIVERGENCIA' : (id !== '' && id === si));
+  });
+}
+function limparFiltrosCentral() {
+  ['central-search','central-safra','central-cultivar','central-situacao','central-qualidade','central-tsi','central-rastrel','central-div']
+    .forEach(id => { document.getElementById(id).value = ''; });
+  document.getElementById('central-so-alerta').checked = false;
+  document.getElementById('central-multi').checked = false;
+  filtrarCentral();
 }
 
-function detalheCentral(i) {
-  const x = (window.__centralLista || [])[i]; if (!x) return;
-  const tr = document.getElementById('central-det-' + i);
-  if (tr.style.display !== 'none') { tr.style.display = 'none'; return; }
-  const q = x.qualidade, t = x.tsi, r = x.rastrel;
-  const bloco = (titulo, corpo) => '<div style="min-width:220px;flex:1;"><div style="font-weight:700;margin-bottom:4px;">' + titulo + '</div><div style="color:var(--texto2);line-height:1.55;">' + corpo + '</div></div>';
-  const linhaOrdem = o => 'Ordem ' + cEsc(o.ordem) + ' · ' + cEsc(o.status.toLowerCase()) + ' · ' + cEsc(o.data || '') + ' · ' + cEsc(o.receita || '') +
-    ' · ' + cNum(o.qtdOrigem, 2) + ' → ' + cNum(o.qtdDestino, 2) + ' ' + cEsc(o.unidade || '') + ' · ' + cNum(o.kg) + ' kg · PMS ' + cNum(o.pms) +
-    (o.sourceLotCode !== o.treatedLotCode ? ' · <b>' + cEsc(o.sourceLotCode) + ' → ' + cEsc(o.treatedLotCode) + '</b>' : '');
-  const fmtMapa = m => Object.entries(m || {}).map(([k, v]) => cEsc(k) + ' (' + v + ')').join(', ');
-  const divs = (x.divergencias || []).map(d => '<li>' + (d.tipo === 'aviso' ? 'ℹ️ ' : '⚠️ ') + cEsc(d.texto) +
-    ['qualidade', 'tsi', 'rastrel'].filter(m => d[m] != null).map(m => ' · ' + m.toUpperCase() + ': ' + cEsc(Array.isArray(d[m]) ? d[m].join(', ') : d[m])).join('') + '</li>').join('');
-  tr.firstChild.innerHTML =
-    '<div style="margin-bottom:8px;"><b>' + cEsc(x.lotId) + '</b> · ' + cEsc(x.situacao) + ' — ' + cEsc(x.motivo) + '</div>' +
-    '<div style="display:flex;gap:18px;flex-wrap:wrap;">' +
-    bloco('Qualidade', q ? (cEsc(q.rotulo || '') + (x.qualidadeClasse ? ' (' + cEsc(x.qualidadeClasse) + ')' : '') + ' · ' + (q.fonte === 'comprado' ? 'comprado' : 'produção') +
-      '<br>Germ. ' + cNum(q.germ) + '% · Vigor ' + cNum(q.vigor) + '% · PMS ' + cNum(q.pms) + ' g<br>' + cNum(q.bags, 0) + ' bags · ' + cNum(q.kg, 0) + ' kg') : 'Lote não encontrado na Qualidade.') +
-    bloco('TSI', t ? (t.ordens.map(linhaOrdem).join('<br>') + '<br>sourceLotId ' + cEsc(x.sourceLotId) + ' · treatedLotId ' + cEsc(x.treatedLotId || '—')) : cEsc(x.tsiStatus === 'NÃO CONECTADO' ? 'TSI ainda não conectado.' : 'Nenhuma ordem do TSI informa este lote.')) +
-    bloco('RASTREL', r ? (r.bags + ' bags · ' + r.tags + ' com tag · ' + cNum(r.kg, 0) + ' kg<br>' + r.expedidos + ' expedidos · ' + r.emEstoque + ' em estoque<br>Tratamento: ' + fmtMapa(r.tratamentos)) : cEsc(x.rastrelStatus === 'NÃO CONECTADO' ? 'RASTREL ainda não conectado.' : 'Nenhum bag deste lote no RASTREL.')) +
-    '</div>' + (divs ? '<ul style="margin:10px 0 0 18px;padding:0;">' + divs + '</ul>' : '');
-  tr.style.display = '';
+// ---------- abas internas e resumo por cultivar ----------
+function centralVista(v) {
+  document.getElementById('central-vista-lotes').style.display = v === 'lotes' ? '' : 'none';
+  document.getElementById('central-vista-cultivar').style.display = v === 'cultivar' ? '' : 'none';
+  document.getElementById('cl-tab-lotes').classList.toggle('active', v === 'lotes');
+  document.getElementById('cl-tab-cultivar').classList.toggle('active', v === 'cultivar');
+  if (v === 'cultivar' && CENTRAL) renderResumoCultivar();
 }
+function renderResumoCultivar() {
+  const sf = document.getElementById('central-safra').value;
+  const grupos = {};
+  CENTRAL.forEach(x => {
+    if (sf && x.crop !== sf) return;
+    const k = x.cultivar || '';
+    const g = grupos[k] || (grupos[k] = { cv: k, nome: x.cultivarNome || '', total: 0, aprov: 0, sit: {}, d: 0, a: 0, p: 0 });
+    g.total++; if (x.qualidadeStatus === 'APROVADO') g.aprov++;
+    g.sit[x.situacao] = (g.sit[x.situacao] || 0) + 1;
+    if (x._n.DIVERGENCIA) g.d++; if (x._n.AVISO) g.a++; if (x._n.PENDENCIA) g.p++;
+    if (!g.nome && x.cultivarNome) g.nome = x.cultivarNome;
+  });
+  const lista = Object.values(grupos).sort((a, b) => b.total - a.total || a.cv.localeCompare(b.cv, 'pt-BR'));
+  const c = v => v ? v : '<span style="color:var(--texto3);">0</span>';
+  document.getElementById('central-cv-tbody').innerHTML = lista.map(g =>
+    '<tr class="cl-row" data-cv="' + cEsc(g.cv) + '" style="cursor:pointer;">' +
+    '<td style="font-weight:700;">' + cEsc(g.cv || '(sem cultivar)') + (g.nome ? ' <span style="color:var(--texto2);font-weight:400;">' + cEsc(g.nome) + '</span>' : '') + '</td>' +
+    '<td class="num"><b>' + g.total + '</b></td><td class="num">' + c(g.aprov) + '</td>' +
+    ['LIBERADO PARA TSI','EM TSI','AGUARDANDO RASTREL','RASTREANDO','PRONTO','INDETERMINADO'].map(s => '<td class="num">' + c(g.sit[s] || 0) + '</td>').join('') +
+    '<td class="num">' + (g.d ? '<span class="cl-niv cl-niv-D">' + g.d + '</span>' : c(0)) + '</td>' +
+    '<td class="num">' + (g.a ? '<span class="cl-niv cl-niv-A">' + g.a + '</span>' : c(0)) + '</td>' +
+    '<td class="num">' + (g.p ? '<span class="cl-niv cl-niv-P">' + g.p + '</span>' : c(0)) + '</td></tr>'
+  ).join('') || '<tr><td colspan="12" style="padding:18px;color:var(--texto2);">Nenhum lote.</td></tr>';
+  window.__centralCultivares = lista.length;
+}
+document.getElementById('central-cv-tbody').addEventListener('click', ev => {
+  const tr = ev.target.closest('tr[data-cv]'); if (!tr) return;
+  const sel = document.getElementById('central-cultivar');
+  sel.value = tr.getAttribute('data-cv');
+  centralVista('lotes');
+  filtrarCentral();
+});
+
+// ---------- detalhe do lote (montado só quando abre) ----------
+function abrirLoteCentral(lotId) {
+  const x = CENTRAL_IDX[lotId]; if (!x) return;
+  const q = x.qualidade, t = x.tsi, r = x.rastrel;
+  const kv = (k, v) => '<div><div class="k">' + k + '</div><div class="v">' + (v == null || v === '' ? '—' : v) + '</div></div>';
+  const badgeSit = '<span class="rank-badge ' + (CENTRAL_SIT_CLASSE[x.situacao] || 'rank-X') + '">' + cEsc(x.situacao) + '</span>';
+  // linha do tempo: só mostra o que o robô afirmou com base em dado real
+  const et = x.etapas;
+  const tl = et ? '<div class="cl-tl">' + [['qualidade', 'Qualidade'], ['tsi', 'TSI'], ['rastrel', 'RASTREL'], ['expedicao', 'Expedição']].map(([k, nome]) => {
+      const e = et[k] || { estado: 'INDETERMINADO', texto: 'Sem informação.' }, s = CL_ETAPA_EST[e.estado] || CL_ETAPA_EST.INDETERMINADO;
+      return '<div class="cl-tl-step s-' + cEsc(e.estado) + '"><div class="cl-tl-dot" aria-hidden="true">' + s[0] + '</div>' +
+        '<div class="cl-tl-nome">' + nome + '</div><div class="cl-tl-est">' + s[1] + '</div><div class="cl-tl-txt">' + cEsc(e.texto) + '</div></div>';
+    }).join('') + '</div>'
+    : '<div style="color:var(--texto2);font-size:0.85rem;">Linha do tempo disponível após a próxima sincronização da Central.</div>';
+  // alertas por nível
+  const grupos = { DIVERGENCIA: [], AVISO: [], PENDENCIA: [] };
+  (x.divergencias || []).forEach(d => grupos[clNivel(d)].push(d));
+  const vals = d => ['qualidade', 'tsi', 'rastrel'].filter(m => d[m] != null)
+    .map(m => (m === 'tsi' ? 'TSI' : m === 'rastrel' ? 'RASTREL' : 'Qualidade') + ': ' + cEsc(Array.isArray(d[m]) ? d[m].join(', ') : d[m])).join(' · ');
+  const alertas = Object.keys(grupos).filter(k => grupos[k].length).map(k => {
+    const l = CL_NIVEL[k].l;
+    return grupos[k].map(d => '<div class="cl-al cl-al-' + l + '"><b>' + CL_NIVEL[k].nome.toUpperCase() + '</b> · ' + cEsc(d.texto) + (vals(d) ? '<small>' + vals(d) + '</small>' : '') + '</div>').join('');
+  }).join('') || '<div style="color:var(--texto2);font-size:0.85rem;">Nenhum alerta para este lote.</div>';
+  // Qualidade
+  const secQ = q ? '<div class="cl-kv">' +
+      kv('Classe', x.qualidadeClasse ? cEsc(x.qualidadeClasse) : '—') +
+      kv('Status', '<span class="rank-badge ' + (CENTRAL_Q_CLASSE[x.qualidadeStatus] || 'rank-X') + '">' + cEsc(String(x.qualidadeStatus).toLowerCase()) + '</span>') +
+      kv('Rótulo', cEsc(q.rotulo || '—')) + kv('Origem', q.fonte === 'comprado' ? 'comprado' : 'produção') +
+      kv('Germinação', q.germ != null ? cNum(q.germ) + '%' : '—') + kv('Vigor', q.vigor != null ? cNum(q.vigor) + '%' : '—') +
+      kv('PMS', q.pms != null ? cNum(q.pms) + ' g' : '—') + kv('Bags previstos', cNum(q.bags, 0)) + kv('kg', cNum(q.kg, 0)) + '</div>'
+    : '<div style="color:var(--texto2);font-size:0.85rem;">Lote não encontrado na Gestão de Qualidade.</div>';
+  // TSI
+  const ordens = t ? t.ordens.slice().sort((a, b) => String(b.data || '').localeCompare(String(a.data || '')) || String(b.ordem).localeCompare(String(a.ordem), 'pt-BR', { numeric: true })) : [];
+  const secT = t ? '<div class="cl-kv" style="margin-bottom:10px;">' +
+      kv('Status', cEsc(x.tsiStatus)) + kv('Ordens', ordens.length) + kv('kg tratados', cNum(t.kg, 0)) +
+      kv('<span style="text-transform:none;">sourceLotId</span>', '<span class="cl-mono">' + cEsc(x.sourceLotId || '—') + '</span>') +
+      kv('<span style="text-transform:none;">treatedLotId</span>', '<span class="cl-mono">' + cEsc(x.treatedLotId || '—') + '</span>') + '</div>' +
+      '<div style="overflow-x:auto;border:1px solid var(--borda);border-radius:10px;"><table class="cl-ord"><thead><tr>' +
+      '<th>Ordem</th><th>Status</th><th>Data</th><th>Receita</th><th>Origem → destino</th><th style="text-align:right;">Qtde</th><th style="text-align:right;">kg</th><th style="text-align:right;">PMS</th><th style="text-transform:none;">sourceLotId</th><th style="text-transform:none;">treatedLotId</th></tr></thead><tbody>' +
+      ordens.map(o => '<tr><td><b>' + cEsc(o.ordem) + '</b></td><td>' + cEsc(String(o.status || '').toLowerCase()) + '</td><td>' + cEsc(o.data ? o.data.split('-').reverse().join('/') : '—') + '</td>' +
+        '<td>' + cEsc(o.receita || '—') + '</td><td>' + cEsc(o.sourceLotCode) + (o.treatedLotCode && o.treatedLotCode !== o.sourceLotCode ? ' → <b>' + cEsc(o.treatedLotCode) + '</b>' : ' → ' + cEsc(o.treatedLotCode || o.sourceLotCode)) + '</td>' +
+        '<td style="text-align:right;">' + (o.qtdOrigem != null ? cNum(o.qtdOrigem, 2) + (o.qtdDestino != null && o.qtdDestino !== o.qtdOrigem ? ' → ' + cNum(o.qtdDestino, 2) : '') + ' ' + cEsc(o.unidade || '') : '—') + '</td>' +
+        '<td style="text-align:right;">' + cNum(o.kg, 0) + '</td><td style="text-align:right;">' + cNum(o.pms) + '</td>' +
+        '<td class="cl-mono">' + cEsc(o.sourceLotId || '—') + '</td><td class="cl-mono">' + cEsc(o.treatedLotId || '—') + '</td></tr>').join('') +
+      '</tbody></table></div>' +
+      (ordens.some(o => !o.sourceLotId) ? '<div style="font-size:0.72rem;color:var(--texto2);margin-top:6px;">Ordens sem sourceLotId são anteriores ao lote obrigatório no TSI (o vínculo veio do PDF da ordem).</div>' : '')
+    : '<div style="color:var(--texto2);font-size:0.85rem;">' + (x.tsiStatus === 'NÃO CONECTADO' ? 'TSI ainda não conectado à Central.' : 'Nenhuma ordem do TSI informa este lote.') + '</div>';
+  // RASTREL
+  const mapa = m => Object.entries(m || {}).filter(([k]) => k !== '—').map(([k, v]) => cEsc(k) + ' (' + v + ')').join(', ') || '—';
+  const semTag = r ? r.bags - r.tags : 0;
+  const situTags = r ? (semTag ? r.tags + ' de ' + r.bags + ' com tag · <b style="color:var(--regular);">' + semTag + ' sem tag</b>' : 'todos os ' + r.bags + ' com tag') +
+      (x.totalBags ? ' · ' + x.totalBags + ' previstos' + (r.tags >= x.totalBags ? '' : ' (faltam ' + (x.totalBags - r.tags) + ')') : ' · previstos: não informado') : '';
+  const secR = r ? '<div class="cl-kv">' +
+      kv('Total de bags', r.bags) + kv('Tagueados', r.tags) + kv('Em estoque', r.emEstoque) + kv('Expedidos', r.expedidos) +
+      kv('kg', cNum(r.kg, 0)) + kv('Status', cEsc(x.rastrelStatus)) + '</div>' +
+      '<div class="cl-kv" style="margin-top:8px;">' + kv('Situação das tags', situTags) + kv('Tratamento', mapa(r.tratamentos)) + kv('Cultivar no RASTREL', mapa(r.cultivares)) + '</div>'
+    : '<div style="color:var(--texto2);font-size:0.85rem;">' + (x.rastrelStatus === 'NÃO CONECTADO' ? 'RASTREL ainda não conectado à Central.' : 'Nenhum bag deste lote no RASTREL.') + '</div>';
+  const n = x._n;
+  document.getElementById('cl-box').innerHTML =
+    '<div class="cl-head"><div style="min-width:0;"><div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:.6px;color:var(--texto2);font-weight:700;">Lote</div>' +
+      '<h2 id="cl-titulo">' + cEsc(x.lotCode) + '</h2><div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">' + badgeSit +
+      '<span class="cl-mono" style="color:var(--texto2);">' + cEsc(x.lotId) + '</span></div></div>' +
+      '<button class="cl-x" type="button" onclick="fecharLoteCentral()" aria-label="Fechar">✕</button></div>' +
+    '<div class="cl-body">' +
+      '<div class="cl-meta">' + kv('Cultivar', cEsc(x.cultivar || '—') + (x.cultivarNome ? ' <span style="color:var(--texto2);font-weight:500;">' + cEsc(x.cultivarNome) + '</span>' : '')) +
+        kv('Categoria', cEsc(x.categoria || '—')) + kv('Peneira', cEsc(x.peneira == null ? '—' : x.peneira)) + kv('PMS', x.pms != null ? cNum(x.pms) + ' g' : '—') +
+        kv('Safra', cEsc(x.crop === 'SEMSAFRA' ? 'sem safra' : x.crop)) + kv('Última atualização', cEsc(x.lastUpdate || '—')) + '</div>' +
+      '<div style="font-size:0.84rem;color:var(--texto2);margin:-4px 0 12px;">' + cEsc(x.motivo || '') + '</div>' +
+      '<div class="cl-sec"><h3>Linha do tempo</h3>' + tl + '</div>' +
+      '<div class="cl-sec"><h3>Alertas ' + (n.DIVERGENCIA ? '<span class="cl-niv cl-niv-D">' + n.DIVERGENCIA + '</span>' : '') + (n.AVISO ? '<span class="cl-niv cl-niv-A">' + n.AVISO + '</span>' : '') + (n.PENDENCIA ? '<span class="cl-niv cl-niv-P">' + n.PENDENCIA + '</span>' : '') + '</h3>' + alertas + '</div>' +
+      '<div class="cl-sec"><h3>Qualidade</h3>' + secQ + '</div>' +
+      '<div class="cl-sec"><h3>TSI</h3>' + secT + '</div>' +
+      '<div class="cl-sec"><h3>RASTREL</h3>' + secR + '</div>' +
+    '</div>';
+  const m = document.getElementById('cl-modal');
+  m.classList.add('aberto'); m.scrollTop = 0;
+  document.body.style.overflow = 'hidden';
+  m.querySelector('.cl-x').focus();
+}
+function fecharLoteCentral() {
+  document.getElementById('cl-modal').classList.remove('aberto');
+  document.body.style.overflow = '';
+}
+document.addEventListener('keydown', ev => {
+  if (ev.key === 'Escape' && document.getElementById('cl-modal').classList.contains('aberto')) fecharLoteCentral();
+});
 </script>
 <script type="text/seedmax-app">
 setInterval(function(){
