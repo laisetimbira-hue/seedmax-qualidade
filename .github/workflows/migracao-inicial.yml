@@ -1,0 +1,37 @@
+name: Migração inicial (HTML antigo -> banco protegido)
+
+# Rodar UMA vez, manualmente (Actions -> Migração inicial -> Run workflow).
+# Lê o index.html do dashboard antigo e grava os dados no Firestore,
+# conferindo no final que o banco ficou idêntico ao HTML.
+
+on:
+  workflow_dispatch:
+    inputs:
+      origem:
+        description: 'URL do index.html antigo'
+        required: true
+        default: 'https://raw.githubusercontent.com/laisetimbira-hue/dashboard-soja-2526/main/index.html'
+      forcar:
+        description: 'Sobrescrever se o banco já tiver dados? (sim/nao)'
+        required: true
+        default: 'nao'
+
+permissions:
+  contents: read
+
+jobs:
+  migrar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install --quiet requests firebase-admin
+      - name: Migrar
+        working-directory: scripts
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ "${{ github.event.inputs.forcar }}" = "sim" ]; then F="--forcar"; else F=""; fi
+          python migrar_do_html.py "${{ github.event.inputs.origem }}" $F

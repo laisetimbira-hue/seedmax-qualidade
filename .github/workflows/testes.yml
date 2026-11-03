@@ -1,0 +1,32 @@
+name: Testes de segurança (regras do Firestore)
+
+# Roda as regras de acesso contra o emulador oficial do Firebase.
+# Não usa o projeto real nem dados reais.
+
+on:
+  push:
+    paths: ['firestore.rules', 'tests/**', '.github/workflows/testes.yml']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regras:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+      - name: Instalar
+        working-directory: tests
+        run: npm install --no-audit --no-fund
+      - name: Testar regras no emulador
+        working-directory: tests
+        run: npx firebase-tools@13 emulators:exec --only firestore --project demo-seedmax --config ../firebase.json "node --test regras.test.mjs"
