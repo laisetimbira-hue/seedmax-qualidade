@@ -22,7 +22,7 @@ e nada é gravado no TSI nem no RASTREL.
 * `lotCode` = `26S133C` (maiúsculas, sem espaços nem ponto no fim), `crop` = `SOJA2526`
 * Lote que não está na Qualidade: `SEMSAFRA_<lote>` (a safra não é inventada).
 * TSI: `sourceLotId` (lote que entrou) e `treatedLotId` (lote que saiu); iguais quando o
-  código não muda. `parentLotIds` fica vazio — só para mistura/divisão no futuro.
+  código não muda. Gravados pelo próprio TSI em cada linha de lote das ordens novas. `parentLotIds` fica vazio — só para mistura/divisão no futuro.
 * Os registros atuais dos módulos **não são alterados**.
 
 ## Modelo `lots/{lotId}`
@@ -55,9 +55,43 @@ e nada é gravado no TSI nem no RASTREL.
 | PRONTO | Aprovado; TSI concluído; todos os bags previstos com tag |
 | INDETERMINADO | Os dados não permitem decidir: lote fora da Qualidade; lote não aprovado mas já tratado/rastreado; bags no RASTREL sem ordem com lote no TSI; módulo não conectado |
 
-Limitação conhecida: das 255 ordens do TSI, só as importadas do PDF (22) informam o
+Limitação conhecida: das 255 ordens antigas do TSI, só as importadas do PDF (22) informam o
 lote de semente. Por isso "LIBERADO PARA TSI" quer dizer "o TSI não tem ordem com este
 lote", e lotes com bags no RASTREL mas sem ordem com lote ficam INDETERMINADO.
+
+### Lote obrigatório no TSI (desde nov/2026)
+
+* O lote de semente é obrigatório para **fechar** uma ordem (e para "Tratar novo lote", que já
+  fecha na hora):
+  * "Tratar novo lote": bloco *Lotes de semente* (origem, lote tratado se o código mudar, kg);
+  * "Importar PDF": o fluxo continua igual. PDF **sem lote entra normalmente**, marcado
+    `LOTE PENDENTE` (`lotePendente: true`, `lotesDetalhe: []`); o botão "Informar lote" grava o
+    lote depois (sem mexer no estoque) e "Fechar ordem" fica bloqueado até isso;
+  * "Fechar ordem": usa os lotes já gravados na ordem (do PDF ou informados).
+* Cada linha de `lotesDetalhe` passa a ter `sourceLotCode`, `sourceLotId`, `treatedLotCode`,
+  `treatedLotId` (mesma regra de `codigo_lote`/`montar_lot_id`). A ordem guarda também `safra`,
+  `sourceLotIds[]`, `treatedLotIds[]`. Linhas digitadas à mão têm `fonteLote: "manual"` e já
+  gravam o código no formato padrão.
+* O robô usa `sourceLotCode`/`treatedLotCode` quando existem (senão, `origem`/`destino`).
+  Se o `sourceLotId` gravado pelo TSI for diferente do `lotId` da Central (ex.: lote fora da
+  Qualidade → `SEMSAFRA_`), o lote recebe o **aviso** `lotId`. Ordens abertas com lote pendente
+  não entram no vínculo e são contadas no log.
+* Ordens antigas não são alteradas e nenhum lote histórico é preenchido automaticamente.
+  As regras do Firestore do TSI ainda **não** exigem o lote (a exigência está na tela);
+  exigir também nas regras é uma etapa futura, a propor e testar.
+
+### Safra ativa (um lugar por sistema)
+
+| Sistema | Onde | Valor atual |
+|---|---|---|
+| TSI | `estoquetsi/index.html` → `const SAFRA_ATIVA` (bloco "SAFRA ATIVA", logo antes do `firebaseConfig`) | `SOJA2526` |
+| Central | `scripts/central_lotes.py` → `SAFRA_ATIVA` | `SOJA2526` |
+
+Os dois sistemas estão em projetos/domínios separados e o TSI grava o identificador no
+momento em que a ordem é salva; por isso a safra **não** é buscada de outro site em tempo real
+(se a busca falhasse, ordens poderiam sair com a safra errada). Na virada, trocar os dois
+juntos. O robô avisa no log quando encontra ordens do TSI com safra diferente da ativa, e cada
+lote nessa situação recebe o aviso `lotId`.
 
 ## Sincronização
 
