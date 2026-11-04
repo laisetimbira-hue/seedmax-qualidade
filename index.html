@@ -1176,6 +1176,8 @@ html {
   // Perfis que podem abrir a Gestão de Qualidade (as regras do Firestore
   // aplicam a mesma lista no servidor — esta aqui é só para a mensagem).
   const PERFIS_QUALIDADE = ['ADMIN', 'QUALIDADE', 'VISUALIZACAO'];
+  // Login único: todos os perfis entram na Home/Central; só PERFIS_QUALIDADE carregam a Gestão de Qualidade.
+  const PERFIS_LOGIN = ['ADMIN', 'QUALIDADE', 'TSI', 'RASTREL', 'VISUALIZACAO'];
 
   // Nomes dos conjuntos de dados que o dashboard espera encontrar.
   const SEEDMAX_DATASETS = ["LOTS", "SUMMARY", "SUMMARY_PREV", "PMS_CV", "LOTES_COMPRADOS", "NOSSO_PLANTIO", "LOTS_INVERNO", "NOSSO_PLANTIO_INVERNO", "LOTES_COMPRADOS_INVERNO", "CV_META_INVERNO", "BENEF_INVERNO", "HISTORICO_APROVACAO", "MUDANCAS_RECENTES", "BENEF", "DIAG_DATA", "TZ_DATA", "CAMPOS_SIGEF", "CV_META", "CV_UBS"];
@@ -1242,6 +1244,11 @@ html {
 
   function smSair() {
     if (smUnsubMeta) { try { smUnsubMeta(); } catch (e) {} smUnsubMeta = null; }
+    // No app unificado (com a ponte): encerra TSI, RASTREL e o SEEDMAX de uma vez.
+    if (window.SeedmaxPonte && typeof window.SeedmaxPonte.sairDeTudo === 'function') {
+      window.SeedmaxPonte.sairDeTudo(smAuth);
+      return;
+    }
     smAuth.signOut().finally(() => {
       // recarrega a página para apagar da memória todos os dados carregados
       location.replace(location.pathname);
@@ -1364,16 +1371,21 @@ html {
                            : 'Este usuário não tem acesso liberado ao SEEDMAX. Fale com o administrador.');
       return;
     }
-    if (!PERFIS_QUALIDADE.includes(perfil.role)) {
+    if (!PERFIS_LOGIN.includes(perfil.role)) {
       await smAuth.signOut();
       smStatus('');
       smFormulario(true);
-      smMostrarErro('Seu perfil (' + perfil.role + ') não tem acesso à Gestão de Qualidade.');
+      smMostrarErro('Seu perfil (' + perfil.role + ') não tem acesso ao SEEDMAX.');
       return;
     }
+    const veQualidade = PERFIS_QUALIDADE.includes(perfil.role);
 
     smStatus('Carregando dados…');
-    let pacote;
+    // TSI e RASTREL não leem a coleção qualidade (as regras negam): entram com conjuntos vazios.
+    let pacote = veQualidade ? null : {
+      meta: { versao: null },
+      dados: Object.fromEntries(SEEDMAX_DATASETS.map(n => [n, []]))
+    };
     for (let tentativa = 0; tentativa < 3 && !pacote; tentativa++) {
       try {
         const q = await smDb.collection('qualidade').get();
@@ -1401,7 +1413,7 @@ html {
     const nome = smEl('sm-usuario');
     if (nome) nome.textContent = perfil.name || user.email;
     window.scrollTo(0, 0);
-    smVigiarAtualizacoes();
+    if (veQualidade) smVigiarAtualizacoes();
   }
 
   smFormulario(false);
@@ -6117,11 +6129,13 @@ function renderHome() {
 }
 
 function renderModulosHome() {
+  // Com a ponte (app unificado), TSI e RASTREL abrem em /tsi/ e /rastrel/ com o login do SEEDMAX.
+  const PONTE = !!(window.SeedmaxPonte && window.SEEDMAX_PONTE_CONFIG);
   const MODS = [
     ['lotes', 'Central de Lotes', 'Consulta do lote do início à expedição, com alertas e linha do tempo.', '', "irParaAba('central')"],
     ['qualidade', 'Qualidade', 'Análises, aprovação, beneficiamento e lotes comprados.', '', "irParaAba('overview')"],
-    ['tsi', 'TSI', 'Ordens de tratamento e estoque de produtos.', 'login próprio', 'https://tsi.seedmax.com.br/'],
-    ['rastrel', 'RASTREL', 'Bags, tags NFC, mapa do armazém e expedição.', 'login próprio', 'https://rastrel.seedmax.com.br/'],
+    ['tsi', 'TSI', 'Ordens de tratamento e estoque de produtos.', PONTE ? '' : 'login próprio', PONTE ? '/tsi/' : 'https://tsi.seedmax.com.br/'],
+    ['rastrel', 'RASTREL', 'Bags, tags NFC, mapa do armazém e expedição.', PONTE ? '' : 'login próprio', PONTE ? '/rastrel/' : 'https://rastrel.seedmax.com.br/'],
     ['relatorios', 'Relatórios', 'Relatórios consolidados da plataforma.', 'em breve', ''],
     ['config', 'Configurações', 'Usuários, perfis e acessos (ADMIN).', 'em breve', '']
   ];
@@ -6130,6 +6144,7 @@ function renderModulosHome() {
     const corpo = '<div class="t"><span class="t-nome">' + m[1] + '</span>' + (m[3] ? '<span class="tag">' + m[3] + '</span>' : '') + '</div><div class="d">' + m[2] + '</div>';
     if (m[3] === 'em breve') return '<div class="mod em-breve" aria-disabled="true">' + corpo + '</div>';
     if (m[4].startsWith('https://')) return '<a class="mod" href="' + m[4] + '" target="_blank" rel="noopener">' + corpo + '</a>';
+    if (m[4].startsWith('/')) return '<a class="mod" href="' + m[4] + '">' + corpo + '</a>';
     return '<div class="mod" role="button" tabindex="0" onclick="' + m[4] + '">' + corpo + '</div>';
   }).join('');
 }
