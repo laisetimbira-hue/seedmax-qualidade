@@ -1,0 +1,9 @@
+{
+  "name": "seedmax-ponte",
+  "private": true,
+  "description": "Ponte de login SEEDMAX -> TSI/RASTREL (NÃO IMPLANTADA)",
+  "main": "index.js",
+  "engines": { "node": "20" },
+  "scripts": { "test": "node --test test/*.test.js" },
+  "dependencies": { "firebase-admin": "^12.7.0", "firebase-functions": "^6.1.0" }
+}
