@@ -1522,6 +1522,7 @@ html {
 
 <div id="safra-verao">
 <div class="tabs">
+  <div class="tab" onclick="showPage('inicio')">Início</div>
   <div class="tab active" onclick="showPage('overview')">Visão Geral</div>
   <div class="tab" onclick="showPage('mapa')">Mapa de Campos</div>
   <div class="tab" onclick="showPage('beneficiamento')">Beneficiamento</div>
@@ -1533,6 +1534,67 @@ html {
 </div>
 
 <main>
+
+  <!-- INÍCIO (Home interna do SEEDMAX — fase 1; números reais da Central de Lotes, somente leitura) -->
+  <div class="page" id="page-inicio">
+    <style>
+      .home-hero { display:flex; flex-wrap:wrap; gap:10px 18px; align-items:flex-end; justify-content:space-between; margin-bottom:16px; }
+      .home-hero h1 { font-family:var(--font-head); font-size:1.9rem; margin:0; letter-spacing:-0.3px; line-height:1.05; }
+      .home-hero .sub { color:var(--texto2); font-size:0.86rem; margin-top:4px; }
+      .home-chip { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--borda); background:var(--card); border-radius:999px; padding:4px 10px; font-size:0.74rem; color:var(--texto2); font-weight:600; }
+      .home-chip b { color:var(--texto); }
+      #home-kpis { grid-template-columns:repeat(2,1fr); }
+      #home-kpis .kpi { cursor:pointer; transition:box-shadow .15s; }
+      #home-kpis .kpi:hover { box-shadow:var(--shadow-md); }
+      @media (min-width:640px){ #home-kpis { grid-template-columns:repeat(4,1fr); } }
+      @media (max-width:639px){ #home-kpis .kpi { padding:10px 12px; } #home-kpis .kpi .value { font-size:1.35rem; } #home-kpis .kpi .label { font-size:0.64rem; } }
+      .home-sec-t { font-family:var(--font-head); font-size:1.15rem; letter-spacing:.5px; text-transform:uppercase; margin:22px 0 10px; display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 10px; }
+      .home-sec-t small { font-family:var(--font-body); text-transform:none; letter-spacing:0; font-size:0.78rem; color:var(--texto2); font-weight:500; }
+      .fluxo { display:grid; grid-template-columns:1fr; gap:10px; }
+      @media (min-width:900px){ .fluxo { grid-template-columns:1fr 28px 1fr 28px 1fr 28px 1fr; align-items:stretch; gap:0; } }
+      .fluxo-seta { display:none; align-items:center; justify-content:center; color:var(--texto3); font-size:1.4rem; font-weight:800; }
+      @media (min-width:900px){ .fluxo-seta { display:flex; } }
+      .etapa { background:var(--card); border:1px solid var(--borda); border-radius:var(--radius); box-shadow:var(--shadow); padding:14px 16px; }
+      .etapa h3 { font-family:var(--font-head); font-size:1.1rem; letter-spacing:.6px; margin:0 0 2px; }
+      .etapa .grande { font-family:var(--font-head); font-size:1.9rem; font-weight:800; line-height:1; margin:8px 0 2px; }
+      .etapa .rot { font-size:0.74rem; color:var(--texto2); }
+      .barra { display:flex; height:10px; border-radius:6px; overflow:hidden; background:var(--bg3); margin:12px 0 8px; }
+      .barra span { display:block; height:100%; }
+      .e-CONCLUIDO { background:var(--excelente); } .e-EM_ANDAMENTO { background:var(--bom); } .e-PENDENTE { background:var(--regular); } .e-INDETERMINADO { background:var(--borda2); }
+      .leg { display:grid; grid-template-columns:1fr auto; gap:3px 10px; font-size:0.76rem; }
+      .leg i { display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:6px; vertical-align:middle; }
+      .leg b { text-align:right; font-variant-numeric:tabular-nums; }
+      .etapa .nota { font-size:0.7rem; color:var(--texto2); margin-top:8px; line-height:1.4; border-top:1px dashed var(--borda); padding-top:6px; }
+      .mods { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:10px; }
+      .mod { background:var(--card); border:1px solid var(--borda); border-radius:var(--radius); box-shadow:var(--shadow); padding:14px 16px; text-decoration:none; color:var(--texto); display:block; position:relative; cursor:pointer; }
+      .mod:hover { box-shadow:var(--shadow-md); border-color:var(--borda2); }
+      .mod .t { font-family:var(--font-head); font-weight:800; font-size:1.05rem; letter-spacing:.4px; display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; }
+      .mod .d { font-size:0.78rem; color:var(--texto2); margin-top:4px; line-height:1.4; }
+      .mod .tag { font-family:var(--font-body); font-size:0.62rem; font-weight:700; letter-spacing:.4px; text-transform:uppercase; border-radius:999px; padding:2px 7px; border:1px solid var(--borda); color:var(--texto2); background:var(--bg3); }
+      .mod.em-breve { opacity:.6; cursor:default; }
+      .mod.em-breve:hover { box-shadow:var(--shadow); border-color:var(--borda); }
+      .home-alertas { background:var(--card); border:1px solid var(--borda); border-radius:var(--radius); box-shadow:var(--shadow); }
+      .home-alertas button { display:flex; width:100%; justify-content:space-between; gap:10px; padding:11px 16px; border:0; border-bottom:1px solid var(--borda); background:none; text-align:left; color:var(--texto); font-size:0.86rem; font-family:var(--font-body); cursor:pointer; }
+      .home-alertas button:last-child { border-bottom:0; }
+      .home-alertas button:hover { background:var(--bg3); }
+    </style>
+    <div class="home-hero">
+      <div><h1>Início</h1><div class="sub">Fluxo da semente — Qualidade → TSI → RASTREL → Expedição</div></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <span class="home-chip">Perfil <b id="home-perfil">—</b></span>
+        <span class="home-chip">Safra <b>Soja 25/26</b></span>
+        <span class="home-chip">Central sincronizada <b id="home-sync">—</b></span>
+      </div>
+    </div>
+    <div id="home-kpis" class="kpi-grid"><div style="grid-column:1/-1;color:var(--texto2);font-size:0.85rem;padding:8px 2px;">Carregando a Central de Lotes…</div></div>
+    <div class="home-sec-t">Fluxo da semente <small>cada etapa só conta o que o próprio módulo comprova</small></div>
+    <div class="fluxo" id="home-fluxo"></div>
+    <div class="home-sec-t">Atenção <small>abre a Central de Lotes já filtrada</small></div>
+    <div class="home-alertas" id="home-alertas"></div>
+    <div class="home-sec-t">Módulos <small>somente os liberados para o seu perfil</small></div>
+    <div class="mods" id="home-mods"></div>
+    <div style="font-size:0.72rem;color:var(--texto2);margin-top:14px;line-height:1.5;">Somente consulta. Os números vêm da Central de Lotes, que lê Qualidade, TSI e RASTREL sem alterar nenhum deles.</div>
+  </div>
 
   <!-- OVERVIEW PAGE -->
   <div class="page active" id="page-overview">
@@ -2302,6 +2364,7 @@ function showPage(name) {
   if (name === 'comprados') buildLotesComprados();
   if (name === 'plantio') buildNossoPlantio();
   if (name === 'central') buildCentralLotes();
+  if (name === 'inicio') buildHome();
   if (name === 'mapa') {
     setTimeout(() => {
       initMapa();
@@ -5685,7 +5748,8 @@ function centralFiltrados(ignorarCultivar) {
     (!sf || x.crop === sf) && (ignorarCultivar || !cv || x.cultivar === cv) && (!si || x.situacao === si) &&
     (!ql || x.qualidadeStatus === ql) && (!ts || x.tsiStatus === ts) && (!rs || x.rastrelStatus === rs) &&
     (!nv || (nv === 'NENHUM' ? !x._peso : x._n[nv] > 0)) &&
-    (!soAlerta || x._n.DIVERGENCIA + x._n.AVISO > 0) && (!multi || x._multi));
+    (!soAlerta || x._n.DIVERGENCIA + x._n.AVISO > 0) && (!multi || x._multi) &&
+    (typeof centralFiltroHome === 'undefined' || !centralFiltroHome || centralFiltroHome.fn(x)));
 }
 
 function filtrarCentral() {
@@ -5701,6 +5765,10 @@ function filtrarCentral() {
   });
   centralLista = lista; centralLimite = CENTRAL_PAGINA;
   document.getElementById('central-count').textContent = lista.length;
+  const fh = (typeof centralFiltroHome !== 'undefined' && centralFiltroHome) ? centralFiltroHome : null;
+  let chip = document.getElementById('central-filtro-home');
+  if (!chip) { chip = document.createElement('span'); chip.id = 'central-filtro-home'; chip.className = 'count-badge'; document.getElementById('central-count').parentNode.after(chip); }
+  chip.innerHTML = fh ? '· filtro da Início: <b>' + cEsc(fh.rotulo) + '</b> <button type="button" class="cl-btn" style="padding:2px 8px;margin-left:4px;" onclick="centralFiltroHome=null;filtrarCentral();">✕</button>' : '';
   marcarCardCentral();
   renderLinhasCentral();
   if (document.getElementById('central-vista-cultivar').style.display !== 'none') renderResumoCultivar();
@@ -5793,6 +5861,7 @@ function limparFiltrosCentral() {
     .forEach(id => { document.getElementById(id).value = ''; });
   document.getElementById('central-so-alerta').checked = false;
   document.getElementById('central-multi').checked = false;
+  if (typeof centralFiltroHome !== 'undefined') centralFiltroHome = null;
   filtrarCentral();
 }
 
@@ -5923,6 +5992,161 @@ function fecharLoteCentral() {
 document.addEventListener('keydown', ev => {
   if (ev.key === 'Escape' && document.getElementById('cl-modal').classList.contains('aberto')) fecharLoteCentral();
 });
+
+// =================== INÍCIO (Home interna — fase 1) ===================
+// Números reais da Central de Lotes (lots/), lidos uma vez (mesma leitura da
+// aba Central). Não grava nada e não muda o login. O menu por perfil abaixo é
+// só conforto: quem protege os dados são as regras do Firestore.
+const PERFIS_MODULOS = {
+  ADMIN:        ['inicio', 'lotes', 'qualidade', 'tsi', 'rastrel', 'relatorios', 'config'],
+  QUALIDADE:    ['inicio', 'lotes', 'qualidade', 'relatorios'],
+  TSI:          ['inicio', 'lotes', 'tsi'],
+  RASTREL:      ['inicio', 'lotes', 'rastrel'],
+  VISUALIZACAO: ['inicio', 'lotes', 'qualidade', 'relatorios']
+};
+let homePerfil = null, homeRenderizada = false;
+let centralFiltroHome = null;   // filtro especial vindo da Home ({rotulo, fn}); some ao limpar os filtros
+
+function irParaAba(nome) {
+  const t = document.querySelector('#safra-verao .tab[onclick="showPage(\'' + nome + '\')"]');
+  if (t) t.click();
+}
+async function garantirCentral() {
+  if (!CENTRAL) await buildCentralLotes();
+  for (let i = 0; i < 60 && !CENTRAL && centralCarregando; i++) await new Promise(r => setTimeout(r, 250));
+  return !!(CENTRAL && CENTRAL.length);
+}
+async function irParaCentral(cfg) {
+  irParaAba('central');
+  if (!(await garantirCentral())) return;
+  centralVista('lotes');
+  ['central-search','central-safra','central-cultivar','central-situacao','central-qualidade','central-tsi','central-rastrel','central-div']
+    .forEach(id => { document.getElementById(id).value = ''; });
+  document.getElementById('central-so-alerta').checked = !!cfg.soAlerta;
+  document.getElementById('central-multi').checked = false;
+  if (cfg.situacao) document.getElementById('central-situacao').value = cfg.situacao;
+  if (cfg.nivel) document.getElementById('central-div').value = cfg.nivel;
+  centralFiltroHome = cfg.fn ? { rotulo: cfg.rotulo, fn: cfg.fn } : null;
+  filtrarCentral();
+  window.scrollTo(0, 0);
+}
+const HOME_FILTROS = {
+  analise:   { rotulo: 'Em análise na Qualidade (condicional ou sem resultado)', fn: x => x.qualidadeStatus === 'CONDICIONAL' || x.qualidadeStatus === 'PENDENTE' },
+  liberados: { situacao: 'LIBERADO PARA TSI' },
+  emtsi:     { situacao: 'EM TSI' },
+  aguard:    { situacao: 'AGUARDANDO RASTREL' },
+  rastreando:{ situacao: 'RASTREANDO' },
+  prontos:   { situacao: 'PRONTO' },
+  expedicao: { rotulo: 'Com bags expedidos no RASTREL', fn: x => !!(x.rastrel && x.rastrel.expedidos > 0) },
+  alerta:    { soAlerta: true },
+  divergencia: { nivel: 'DIVERGENCIA' },
+  aviso:     { nivel: 'AVISO' },
+  semTsi:    { rotulo: 'Bags no RASTREL sem ordem TSI identificada', fn: x => !!x.rastrel && x.etapas && x.etapas.tsi.estado === 'INDETERMINADO' }
+};
+function homeAbrir(chave) { irParaCentral(HOME_FILTROS[chave] || {}); }
+
+async function buildHome() {
+  if (!homePerfil) {
+    try {
+      const u = smAuth.currentUser;
+      const snap = u ? await smDb.collection('users').doc(u.uid).get() : null;
+      homePerfil = (snap && snap.exists && snap.data().role) || 'VISUALIZACAO';
+    } catch (e) { homePerfil = 'VISUALIZACAO'; }
+  }
+  document.getElementById('home-perfil').textContent = homePerfil;
+  renderModulosHome();
+  if (homeRenderizada) return;
+  const ok = await garantirCentral();
+  if (!ok) {
+    document.getElementById('home-kpis').innerHTML = '<div style="grid-column:1/-1;color:var(--texto2);font-size:0.85rem;padding:8px 2px;">A Central de Lotes ainda não está disponível.</div>';
+    return;
+  }
+  renderHome();
+  homeRenderizada = true;
+}
+
+function renderHome() {
+  const C = CENTRAL, n = v => Number(v || 0).toLocaleString('pt-BR');
+  const cont = (f) => C.reduce((s, x) => s + (f(x) ? 1 : 0), 0);
+  const sit = s => cont(x => x.situacao === s);
+  const est = (k, e) => cont(x => x.etapas && x.etapas[k] && x.etapas[k].estado === e);
+  const cond = cont(x => x.qualidadeStatus === 'CONDICIONAL'), semRes = cont(x => x.qualidadeStatus === 'PENDENTE');
+  const reprov = cont(x => x.qualidadeStatus === 'REPROVADO');
+  const exped = cont(x => x.rastrel && x.rastrel.expedidos > 0), expTot = est('expedicao', 'CONCLUIDO');
+  const bagsExp = C.reduce((s, x) => s + (x.rastrel ? x.rastrel.expedidos : 0), 0);
+  const lotD = cont(x => x._n.DIVERGENCIA), lotA = cont(x => x._n.AVISO), lotAl = cont(x => x._n.DIVERGENCIA + x._n.AVISO > 0);
+  const datas = [...new Set(C.map(x => x.lastUpdate).filter(Boolean))].sort();
+  document.getElementById('home-sync').textContent = datas.length ? datas[datas.length - 1] : '—';
+  const cards = [
+    ['analise', 'Em análise (Qualidade)', cond + semRes, n(cond) + ' condicionais · ' + n(semRes) + ' sem resultado', 'warn'],
+    ['liberados', 'Liberados para TSI', sit('LIBERADO PARA TSI'), 'aprovados, sem ordem TSI', ''],
+    ['emtsi', 'Em TSI', sit('EM TSI'), 'ordem aberta no TSI', ''],
+    ['aguard', 'Aguardando RASTREL', sit('AGUARDANDO RASTREL'), 'TSI concluído, sem tag', 'warn'],
+    ['rastreando', 'Rastreando', sit('RASTREANDO'), 'parte dos bags com tag', ''],
+    ['prontos', 'Prontos', sit('PRONTO'), 'TSI + todos os bags com tag', 'accent'],
+    ['expedicao', 'Expedição', exped, n(expTot) + ' expedidos por completo · ' + n(bagsExp) + ' bags', 'accent'],
+    ['alerta', 'Lotes com alerta', lotAl, n(lotD) + ' com divergência · ' + n(lotA) + ' com aviso', lotD ? 'danger' : '']
+  ];
+  document.getElementById('home-kpis').innerHTML = cards.map(c =>
+    '<div class="kpi ' + c[4] + '" role="button" tabindex="0" data-home="' + c[0] + '"><div class="label">' + c[1] + '</div><div class="value">' + n(c[2]) + '</div><div class="sub">' + c[3] + '</div></div>').join('');
+  const EST = [['CONCLUIDO', 'Concluído'], ['EM_ANDAMENTO', 'Em andamento'], ['PENDENTE', 'Pendente'], ['INDETERMINADO', 'Indeterminado']];
+  const etapas = [
+    ['qualidade', 'QUALIDADE', 'aprovados', 'Pendente inclui ' + n(reprov) + ' reprovados (reprovado nunca conta como concluído).'],
+    ['tsi', 'TSI', 'com ordem concluída', 'Indeterminado: bags no RASTREL, mas as ordens antigas do TSI não registram o lote.'],
+    ['rastrel', 'RASTREL', 'com os bags previstos tagueados', 'Em andamento: parte dos bags previstos com tag.'],
+    ['expedicao', 'EXPEDIÇÃO', 'expedidos por completo', 'Só conta bag marcado como expedido no RASTREL.']
+  ];
+  const tot = C.length;
+  document.getElementById('home-fluxo').innerHTML = etapas.map(([k, nome, rot, nota], i) => {
+    const v = {}; EST.forEach(([s]) => { v[s] = est(k, s); });
+    return (i ? '<div class="fluxo-seta" aria-hidden="true">→</div>' : '') +
+      '<div class="etapa"><h3>' + nome + '</h3><div class="grande">' + n(v.CONCLUIDO) + '</div><div class="rot">lotes ' + rot + ' de ' + n(tot) + '</div>' +
+      '<div class="barra" role="img" aria-label="' + EST.map(([s, r]) => r + ' ' + v[s]).join(', ') + '">' +
+      EST.map(([s]) => v[s] ? '<span class="e-' + s + '" style="width:' + (100 * v[s] / tot) + '%"></span>' : '').join('') + '</div>' +
+      '<div class="leg">' + EST.map(([s, r]) => '<span><i class="e-' + s + '"></i>' + r + '</span><b>' + n(v[s]) + '</b>').join('') + '</div>' +
+      '<div class="nota">' + nota + '</div></div>';
+  }).join('');
+  const al = [
+    ['divergencia', lotD, 'lotes com <b>divergência</b> entre módulos', 'var(--critico)'],
+    ['aguard', sit('AGUARDANDO RASTREL'), 'lotes com TSI concluído aguardando <b>RASTREL</b>', 'var(--regular)'],
+    ['semTsi', cont(x => !!x.rastrel && x.etapas && x.etapas.tsi.estado === 'INDETERMINADO'), 'lotes com bags no RASTREL sem ordem TSI identificada', 'var(--texto2)'],
+    ['aviso', lotA, 'lotes com <b>aviso</b>', 'var(--regular)']
+  ].filter(a => a[1]);
+  document.getElementById('home-alertas').innerHTML = al.map(a => '<button type="button" data-home="' + a[0] + '"><span><b style="color:' + a[3] + ';font-family:var(--font-head);font-size:1.05rem;margin-right:6px;">' + n(a[1]) + '</b>' + a[2] + '</span><span style="color:var(--texto3);">›</span></button>').join('')
+    || '<div style="padding:12px 16px;color:var(--texto2);font-size:0.85rem;">Nada pedindo atenção agora.</div>';
+}
+
+function renderModulosHome() {
+  const MODS = [
+    ['lotes', 'Central de Lotes', 'Consulta do lote do início à expedição, com alertas e linha do tempo.', '', "irParaAba('central')"],
+    ['qualidade', 'Qualidade', 'Análises, aprovação, beneficiamento e lotes comprados.', '', "irParaAba('overview')"],
+    ['tsi', 'TSI', 'Ordens de tratamento e estoque de produtos.', 'login próprio', 'https://tsi.seedmax.com.br/'],
+    ['rastrel', 'RASTREL', 'Bags, tags NFC, mapa do armazém e expedição.', 'login próprio', 'https://rastrel.seedmax.com.br/'],
+    ['relatorios', 'Relatórios', 'Relatórios consolidados da plataforma.', 'em breve', ''],
+    ['config', 'Configurações', 'Usuários, perfis e acessos (ADMIN).', 'em breve', '']
+  ];
+  const ok = PERFIS_MODULOS[homePerfil] || ['inicio', 'lotes'];
+  document.getElementById('home-mods').innerHTML = MODS.filter(m => ok.includes(m[0])).map(m => {
+    const corpo = '<div class="t"><span class="t-nome">' + m[1] + '</span>' + (m[3] ? '<span class="tag">' + m[3] + '</span>' : '') + '</div><div class="d">' + m[2] + '</div>';
+    if (m[3] === 'em breve') return '<div class="mod em-breve" aria-disabled="true">' + corpo + '</div>';
+    if (m[4].startsWith('https://')) return '<a class="mod" href="' + m[4] + '" target="_blank" rel="noopener">' + corpo + '</a>';
+    return '<div class="mod" role="button" tabindex="0" onclick="' + m[4] + '">' + corpo + '</div>';
+  }).join('');
+}
+
+// cliques da Home: um ouvinte só (cards e lista de atenção)
+const _paginaInicio = document.getElementById('page-inicio');
+if (_paginaInicio) {
+  _paginaInicio.addEventListener('click', ev => {
+    const el = ev.target.closest('[data-home]'); if (el) homeAbrir(el.getAttribute('data-home'));
+  });
+  _paginaInicio.addEventListener('keydown', ev => {
+    if (ev.key !== 'Enter') return;
+    const el = ev.target.closest('[data-home], .mod[role=button]'); if (el) el.click();
+  });
+  // Início é a primeira tela depois do login (a Visão Geral é montada antes, visível, e continua a um clique)
+  setTimeout(() => irParaAba('inicio'), 0);
+}
 </script>
 <script type="text/seedmax-app">
 setInterval(function(){
