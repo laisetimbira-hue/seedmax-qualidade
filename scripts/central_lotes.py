@@ -762,11 +762,14 @@ def sincronizar(simular=False):
         cont[d["situacao"]] = cont.get(d["situacao"], 0) + 1
     print("Situação:", json.dumps(cont, ensure_ascii=False))
     print("Com correspondência entre módulos:", sum(1 for d in docs.values() if len(d["modulos"]) > 1))
-    print("Lotes com divergência:", sum(1 for d in docs.values() if d["divergencias"]))
+    # um contador por nível (o mesmo lote pode aparecer em mais de um nível)
+    rotulos = {"DIVERGENCIA": "Lotes com divergência", "AVISO": "Lotes com aviso",
+               "PENDENCIA": "Lotes com pendência informacional"}
     for n in NIVEIS:
         lotes_n = sum(1 for d in docs.values() if d["alertasPorNivel"][n])
         total_n = sum(d["alertasPorNivel"][n] for d in docs.values())
-        print(f"Alertas {n}: {lotes_n} lotes ({total_n} alertas)")
+        print(f"{rotulos[n]}: {lotes_n} ({total_n} alertas)")
+    print("Lotes sem nenhum alerta:", sum(1 for d in docs.values() if not d["divergencias"]))
     print("Cultivares:", len({d["cultivar"] for d in docs.values() if d["cultivar"]}))
     novos, iguais, ausentes = gravar_lots(docs, simular=simular)
     print(f"lots/: {novos} gravados, {iguais} sem mudança, {ausentes} marcados presente=false"
