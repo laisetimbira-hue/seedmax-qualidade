@@ -1,6 +1,6 @@
 name: Central de Lotes (sincronização somente leitura)
 
-# Monta o índice lots/{lotId} no Firebase "seedmax" a partir de:
+# Monta o Cadastro Mestre lots/{lotId} (UNIÃO Qualidade ∪ TSI ∪ RASTREL) no Firebase "seedmax" a partir de:
 #   Qualidade (seedmax)  ·  TSI (estoquetsi)  ·  RASTREL (rastreabilidade-a511a)
 #
 # TSI e RASTREL são SÓ LIDOS, sem chave JSON: o GitHub prova quem é por
@@ -17,6 +17,12 @@ on:
     # de hora em hora, 07h–19h de Brasília (10–22 UTC), segunda a sábado,
     # no minuto 41 (fora dos horários de pico do GitHub)
     - cron: '41 10-22 * * 1-6'
+  workflow_run:
+    # Também roda logo depois de cada execução do robô da Qualidade: o agendamento
+    # do GitHub descarta boa parte das execuções (em nov/2026 rodou ~3 vezes/dia em
+    # vez de 1 vez por hora), e assim cada atualização da planilha chega à Central.
+    workflows: ["Atualizar dados (banco protegido)"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       simular:
