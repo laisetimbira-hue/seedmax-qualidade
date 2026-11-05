@@ -74,7 +74,7 @@ def test_indeterminado_sem_dados_suficientes():
     d = montar([lote("5B")], tsi=False, rastrel=False)
     assert sit(d, "5B") == "INDETERMINADO"            # módulos não conectados
     d = montar([], [], bags("5C", 3))
-    assert d["SEMSAFRA_5C"]["situacao"] == "INDETERMINADO"  # não está na Qualidade
+    assert d["SOJA2526_5C"]["situacao"] == "INDETERMINADO"  # não está na Qualidade
 
 
 def test_reprovado_movimentado_vira_indeterminado_com_divergencia():
@@ -142,12 +142,13 @@ def test_ordem_manual_lote_tratado_com_codigo_novo():
 
 
 def test_lot_id_do_tsi_diferente_da_central_gera_aviso():
-    # lote fora da Qualidade: a Central usa SEMSAFRA_, o TSI gravou SOJA2526_
+    # Cadastro Mestre: lote fora da Qualidade usa a mesma chave que o TSI grava
+    # (SAFRA_ATIVA) → sem aviso; só avisa quando o TSI gravou OUTRA safra
     d = montar([lote("26S133C")], [ordem_nova("7779", "99X999")])
-    doc = d["SEMSAFRA_99X999"]
-    av = [x for x in doc["divergencias"] if x["campo"] == "lotId"]
-    assert av and av[0]["tipo"] == "aviso" and av[0]["tsi"] == ["SOJA2526_99X999"]
-    assert "SEMSAFRA_99X999" in av[0]["texto"]
+    assert not [x for x in d["SOJA2526_99X999"]["divergencias"] if x["campo"] == "lotId"]
+    d = montar([], [ordem_nova("7782", "99X998", safra="SOJA2425")])
+    av = [x for x in d["SOJA2526_99X998"]["divergencias"] if x["campo"] == "lotId"]
+    assert av and av[0]["tipo"] == "aviso" and av[0]["tsi"] == ["SOJA2425_99X998"]
 
 
 def test_sourcelotcode_tem_prioridade_sobre_origem():
@@ -254,12 +255,12 @@ def test_expedicao_so_com_evidencia():
 
 def test_lote_so_no_tsi_e_so_no_rastrel():
     d = montar([], [ordem("1", "27A")], bags("27B", 4))
-    a, b = d["SEMSAFRA_27A"], d["SEMSAFRA_27B"]
+    a, b = d["SOJA2526_27A"], d["SOJA2526_27B"]
     assert etapa(a, "qualidade") == "INDETERMINADO" and etapa(a, "tsi") == "CONCLUIDO"
     assert niveis(a, "fora_da_qualidade") == {"PENDENCIA"}
     assert etapa(b, "qualidade") == "INDETERMINADO" and etapa(b, "tsi") == "INDETERMINADO"
     assert etapa(b, "rastrel") == "INDETERMINADO"        # sem bags previstos
-    assert niveis(b, "sem_bags_previstos") == set()      # sem Qualidade: só "fora_da_qualidade"
+    assert niveis(b, "sem_bags_previstos") == set()      # sem Qualidade: não cobra bags previstos
 
 
 def test_nao_conectados_ficam_indeterminados():
@@ -292,4 +293,121 @@ def test_cultivar_de_outro_modulo_vira_codigo_da_qualidade():
     q = cl.resumir_qualidade({"LOTS": []})
     t, _ = cl.resumir_tsi([ordem("1", "31A")])
     d = cl.consolidar(q, t, {}, AP, "agora", nomes=cl.montar_nomes(CV), codigos_cv=cl.montar_codigos(CV))
-    assert d["SEMSAFRA_31A"]["cultivar"] == "55I57RSF IPRO" and d["SEMSAFRA_31A"]["cultivarNome"] == "Zeus"
+    assert d["SOJA2526_31A"]["cultivar"] == "55I57RSF IPRO" and d["SOJA2526_31A"]["cultivarNome"] == "Zeus"
+
+
+# ---- Cadastro Mestre de Lotes (nov/2026): lots/ = Qualidade ∪ TSI ∪ RASTREL, chave única
+
+def lab(doc):
+    return doc["qualidade"]
+
+
+def test_A_lote_so_na_qualidade():
+    d = montar([lote("26S100", ranking="B")])
+    assert list(d) == ["SOJA2526_26S100"]
+    doc = d["SOJA2526_26S100"]
+    assert doc["origens"] == {"qualidade": True, "tsi": False, "rastrel": False}
+    assert doc["qualidadeStatus"] == "APROVADO" and doc["tsi"] is None and doc["rastrel"] is None
+    assert doc["tsiStatus"] == "SEM ORDEM COM LOTE" and doc["rastrelStatus"] == "SEM BAGS"
+    assert doc["etapas"]["tsi"]["estado"] == "PENDENTE" and doc["etapas"]["rastrel"]["estado"] == "PENDENTE"
+    assert not doc["safraPresumida"]
+    # etapa anterior do fluxo: nunca é DIVERGENCIA nem AVISO
+    assert doc["alertasPorNivel"]["DIVERGENCIA"] == 0 and doc["alertasPorNivel"]["AVISO"] == 0
+
+
+def test_B_lote_so_no_rastrel():
+    d = montar([], [], bags("26S101", 5))
+    assert list(d) == ["SOJA2526_26S101"]
+    doc = d["SOJA2526_26S101"]
+    assert doc["origens"] == {"qualidade": False, "tsi": False, "rastrel": True}
+    assert doc["qualidade"] is None and doc["qualidadeStatus"] == "NÃO ENCONTRADO"
+    assert doc["qualidadeClasse"] is None and doc["pms"] is None      # nada laboratorial inventado
+    assert doc["rastrel"]["bags"] == 5 and doc["tsiStatus"] == "SEM ORDEM COM LOTE"
+    assert doc["safraPresumida"] is True
+    assert niveis(doc, "rastrel_sem_qualidade") == {"AVISO"}
+    assert not niveis(doc, "tsi_sem_qualidade")
+
+
+def test_C_lote_so_no_tsi():
+    d = montar([], [ordem("50", "26S102")])
+    assert list(d) == ["SOJA2526_26S102"]
+    doc = d["SOJA2526_26S102"]
+    assert doc["origens"] == {"qualidade": False, "tsi": True, "rastrel": False}
+    assert doc["qualidade"] is None and doc["qualidadeStatus"] == "NÃO ENCONTRADO"
+    assert doc["rastrel"] is None and doc["rastrelStatus"] == "SEM BAGS"
+    assert doc["tsi"]["ordens"][0]["ordem"] == "50"
+    assert doc["pms"] is None                                          # PMS do TSI não vira PMS oficial
+    assert niveis(doc, "tsi_sem_qualidade") == {"AVISO"}
+
+
+def test_D_lote_nas_tres_fontes():
+    d = montar([lote("26S103")], [ordem("51", "26S103")], bags("26S103", 20))
+    assert list(d) == ["SOJA2526_26S103"]
+    doc = d["SOJA2526_26S103"]
+    assert doc["origens"] == {"qualidade": True, "tsi": True, "rastrel": True}
+    assert doc["modulos"] == ["QUALIDADE", "TSI", "RASTREL"]
+    assert doc["situacao"] == "PRONTO"
+    assert not niveis(doc, "rastrel_sem_qualidade") and not niveis(doc, "tsi_sem_qualidade")
+
+
+def test_E_nasce_no_rastrel_e_depois_aparece_na_qualidade():
+    antes = montar([], [], bags("26S104", 20))
+    depois = montar([lote("26S104")], [], bags("26S104", 20))
+    assert list(antes) == list(depois) == ["SOJA2526_26S104"]        # MESMO documento
+    a, b = antes["SOJA2526_26S104"], depois["SOJA2526_26S104"]
+    assert a["qualidade"] is None and b["qualidade"]["bags"] == 20   # resultados acrescentados
+    assert b["rastrel"] == a["rastrel"]                               # parte RASTREL intacta
+    assert a["hash"] != b["hash"]
+    # gravação: atualiza o mesmo id, não cria outro nem marca ausente
+    atuais = {"SOJA2526_26S104": {"hash": a["hash"], "presente": True, "lotCode": "26S104"}}
+    p = cl.planejar_gravacao(depois, atuais, "agora")
+    assert list(p["gravar"]) == ["SOJA2526_26S104"] and not p["marcar"]
+
+
+def test_E2_documento_antigo_semsafra_e_substituido_sem_apagar():
+    novos = montar([lote("26S105")])
+    atuais = {"SEMSAFRA_26S105": {"hash": "x", "presente": True, "lotCode": "26S105", "crop": "SEMSAFRA"},
+              "SOJA2526_ANTIGO": {"hash": "y", "presente": True, "lotCode": "ANTIGO"},
+              "SEMSAFRA_JA_OFF": {"hash": "z", "presente": False, "lotCode": "JA_OFF"}}
+    p = cl.planejar_gravacao(novos, atuais, "agora")
+    assert p["marcar"]["SEMSAFRA_26S105"] == {"presente": False, "substituidoPor": "SOJA2526_26S105",
+                                              "mescladoEm": "agora"}
+    assert p["marcar"]["SOJA2526_ANTIGO"] == {"presente": False} and p["perdidos"] == ["SOJA2526_ANTIGO"]
+    assert "SEMSAFRA_JA_OFF" not in p["marcar"]                       # já estava fora: não mexe
+    assert p["substituidos"] == 1 and p["ausentes"] == 1
+
+
+def test_F_grafias_equivalentes_nao_duplicam():
+    lots = [lote(" 26s106. ")]
+    ordens = [ordem("52", "26S106")]
+    bs = bags("26 S106", 2) + bags("26s106", 2)
+    d = montar(lots, ordens, bs)
+    assert list(d) == ["SOJA2526_26S106"]
+    doc = d["SOJA2526_26S106"]
+    assert doc["rastrel"]["bags"] == 4 and doc["lotCode"] == "26S106"
+    assert niveis(doc, "codigo_lote") == {"AVISO"}                   # grafia diferente só gera aviso
+    q = cl.resumir_qualidade({"LOTS": lots})
+    t, _ = cl.resumir_tsi(ordens)
+    r = cl.resumir_rastrel(bs)
+    e = cl.estatisticas_uniao(q, t, r)
+    assert e["uniao"] == 1 and e["mesclasEntreFontes"] == 2 and e["grafiasUnificadas"] >= 1
+
+
+def test_uniao_contagens_e_qualidade_nunca_some():
+    lots = [lote("A1"), lote("A2"), lote("A3", ranking="D")]
+    d = montar(lots, [ordem("1", "A2"), ordem("2", "T9")], bags("A2", 3) + bags("R9", 2))
+    assert set(d) == {"SOJA2526_" + c for c in ("A1", "A2", "A3", "T9", "R9")}
+    q = cl.resumir_qualidade({"LOTS": lots})
+    t, _ = cl.resumir_tsi([ordem("1", "A2"), ordem("2", "T9")])
+    r = cl.resumir_rastrel(bags("A2", 3) + bags("R9", 2))
+    e = cl.estatisticas_uniao(q, t, r)
+    assert (e["qualidade"], e["tsi"], e["rastrel"], e["uniao"]) == (3, 2, 2, 5)
+    assert (e["soQualidade"], e["soTsi"], e["soRastrel"], e["tresFontes"]) == (2, 1, 1, 1)
+
+
+def test_tsi_e_rastrel_nunca_escrevem_dados_laboratoriais():
+    o = ordem("53", "26S107", pms=210.0)
+    b = [dict(x, germ=99, vigor=99, pms=999, classe="A") for x in bags("26S107", 2)]
+    doc = montar([], [o], b)["SOJA2526_26S107"]
+    assert doc["qualidade"] is None and doc["qualidadeClasse"] is None and doc["pms"] is None
+    assert doc["qualidadeStatus"] == "NÃO ENCONTRADO"
