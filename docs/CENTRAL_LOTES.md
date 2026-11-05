@@ -20,10 +20,28 @@ e nada é gravado no TSI nem no RASTREL.
 
 * `lotId = SAFRA_LOTE` — ex.: `SOJA2526_26S133C`
 * `lotCode` = `26S133C` (maiúsculas, sem espaços nem ponto no fim), `crop` = `SOJA2526`
-* Lote que não está na Qualidade: `SEMSAFRA_<lote>` (a safra não é inventada).
+* **Cadastro Mestre (nov/2026):** a chave é sempre `SAFRA_ATIVA` + código, venha o lote de onde
+  vier. Lote fora da Qualidade recebe `safraPresumida: true` (antes era `SEMSAFRA_<lote>`, que virava
+  um segundo documento quando o lote chegava na Qualidade). Os documentos `SEMSAFRA_*` antigos não são
+  apagados: ficam `presente: false` com `substituidoPor: <lotId>`.
 * TSI: `sourceLotId` (lote que entrou) e `treatedLotId` (lote que saiu); iguais quando o
   código não muda. Gravados pelo próprio TSI em cada linha de lote das ordens novas. `parentLotIds` fica vazio — só para mistura/divisão no futuro.
 * Os registros atuais dos módulos **não são alterados**.
+
+## Cadastro Mestre de Lotes (nov/2026)
+
+`lots/` é a **união** `Qualidade ∪ TSI ∪ RASTREL`: o lote aparece na Central se existir em
+qualquer uma das três fontes, e o mesmo código nunca gera dois documentos.
+
+* Cada fonte preenche só o próprio bloco: `qualidade{}` (resultados laboratoriais, classe,
+  aprovação — **só** da planilha/Drive), `tsi{}` (ordens) e `rastrel{}` (bags, tags, expedição).
+  Bloco ausente = `null`, com o estado de sempre: `qualidadeStatus: NÃO ENCONTRADO`,
+  `tsiStatus: SEM ORDEM COM LOTE`, `rastrelStatus: SEM BAGS`, etapa `INDETERMINADO`/`PENDENTE`.
+* `origens = {qualidade, tsi, rastrel}` (true/false) diz em quais fontes o lote existe.
+* Quando o lote aparece depois em outra fonte, o MESMO documento é atualizado (merge pelo `hash`).
+* Alertas novos (nível AVISO): `rastrel_sem_qualidade`, `tsi_sem_qualidade`. Lote só na
+  Qualidade não gera alerta de erro — está numa etapa anterior do fluxo.
+* O log do robô mostra a contagem por origem, a união e as mesclas (`Cadastro Mestre: {...}`).
 
 ## Modelo `lots/{lotId}`
 
@@ -128,7 +146,8 @@ lote nessa situação recebe o aviso `lotId`.
 
 ## Sincronização
 
-* Workflow `.github/workflows/central-lotes.yml`, de hora em hora (07h–19h, seg–sáb) e manual.
+* Workflow `.github/workflows/central-lotes.yml`: agendado de hora em hora (07h–19h, seg–sáb — o GitHub
+  descarta muitas dessas execuções), **logo após cada execução do robô da Qualidade** e manual.
 * Lê a Qualidade do próprio `seedmax`, o TSI (`lotesTratamento`, só os campos necessários)
   e o RASTREL (`bags`, só os campos necessários).
 * Regrava só os lotes cujo resumo mudou (`hash`). Nunca apaga.
