@@ -9,6 +9,17 @@ consolidando:
   TSI        (estoquetsi / lotesTratamento)        — ordens com lote de semente
   RASTREL    (rastreabilidade-a511a / bags)        — bags, tags, expedição
 
+Cadastro Mestre (nov/2026): lots/ é a UNIÃO  Qualidade ∪ TSI ∪ RASTREL.
+  * Um lote aparece na Central se existir em QUALQUER uma das três fontes.
+  * A chave é sempre SAFRA_ATIVA + código normalizado (codigo_lote), venha o
+    lote de onde vier — o mesmo lote nunca ganha um segundo documento quando
+    aparece depois em outra fonte (antes, lote fora da Qualidade usava
+    SEMSAFRA_<lote> e virava outro documento quando chegava na Qualidade).
+  * Cada fonte só preenche o próprio bloco (qualidade / tsi / rastrel);
+    resultados laboratoriais vêm SÓ da Qualidade.
+  * Documentos antigos SEMSAFRA_<lote> não são apagados: ficam presente=false
+    com substituidoPor=<lotId novo>.
+
 Regras desta fase:
   * TSI e RASTREL são SÓ LIDOS (credencial sem permissão de escrita).
   * Nada é gravado de volta em nenhum módulo; só lots/{lotId} no seedmax.
@@ -51,7 +62,7 @@ PROJETO_RASTREL = "rastreabilidade-a511a"
 SAFRA_ATIVA = "SOJA2526"
 SAFRA_PADRAO = SAFRA_ATIVA   # nome antigo, mantido por compatibilidade
 SEM_SAFRA = "SEMSAFRA"
-ESQUEMA = 1
+ESQUEMA = 2   # 2 = Cadastro Mestre (chave única por lote, campo origens)
 
 # ---------------------------------------------------------------- situação
 # Ordem do fluxo: Qualidade → TSI → RASTREL → Expedição
@@ -165,9 +176,11 @@ def resumir_qualidade(dados):
                 aprov = "APROVADO" if st == "APROVADO" else "PENDENTE"
                 rotulo = x.get("status") or "sem status"
                 categoria = x.get("categoria_reembalado") or x.get("categoria_origem")
+            vistos = (out.get(code) or {}).get("codigosOriginais", set()) | {str(x.get("lote"))}
             out[code] = {
                 "fonte": fonte,
                 "codigoOriginal": x.get("lote"),
+                "codigosOriginais": vistos,
                 "cultivar": x.get("cultivar"),
                 "categoria": categoria,
                 "peneira": x.get("peneira"),
@@ -414,14 +427,17 @@ def consolidar(qualidade, tsi, rastrel, apelidos, carimbo,
         q = qualidade.get(code)
         t = (tsi or {}).get(code)
         r = (rastrel or {}).get(code)
-        crop = safra if q else SEM_SAFRA
+        # Cadastro Mestre: a chave NÃO depende da fonte — o mesmo código gera
+        # sempre o mesmo lotId (o TSI também grava SAFRA_ATIVA no sourceLotId).
+        # Sem Qualidade, a safra é a ativa, marcada como presumida.
+        crop = safra
         lot_id = montar_lot_id(crop, code)
         div = []
 
         # ---- lote: código digitado diferente da forma padrão
         originais = set()
         if q:
-            originais.add(str(q["codigoOriginal"]))
+            originais |= q.get("codigosOriginais") or {str(q["codigoOriginal"])}
         if t:
             originais |= t["codigosOriginais"]
         if r:
@@ -529,6 +545,14 @@ def consolidar(qualidade, tsi, rastrel, apelidos, carimbo,
         if not q:
             _diverg(div, "qualidade", "Lote não encontrado na Gestão de Qualidade.",
                     nivel="PENDENCIA", codigo="fora_da_qualidade")
+            # Cadastro Mestre: lote movimentado em outro módulo sem registro na Qualidade
+            if r:
+                _diverg(div, "qualidade", "Lote no RASTREL sem registro na Gestão de Qualidade.",
+                        nivel="AVISO", codigo="rastrel_sem_qualidade", rastrel=f"{r['bags']} bags")
+            if t:
+                _diverg(div, "qualidade", "Lote no TSI sem registro na Gestão de Qualidade.",
+                        nivel="AVISO", codigo="tsi_sem_qualidade",
+                        tsi=sorted({o["ordem"] for o in t["ordens"]}))
         if q and q["status"] == "APROVADO" and tsi_conectado and not t:
             _diverg(div, "tsi", "Aprovado na Qualidade, mas nenhuma ordem TSI informa este lote.",
                     nivel="PENDENCIA", codigo="aprovado_sem_tsi")
@@ -572,6 +596,9 @@ def consolidar(qualidade, tsi, rastrel, apelidos, carimbo,
             "lotCode": code,
             "crop": crop,
             "safra": crop,
+            "safraPresumida": not q,      # sem Qualidade: safra ativa presumida (não vem de um dado)
+            # de onde o lote é conhecido (cada bloco abaixo só existe se a fonte tiver o lote)
+            "origens": {"qualidade": bool(q), "tsi": bool(t), "rastrel": bool(r)},
             "cultivar": base.get("cultivar") or (sorted(t["cultivares"])[0] if t and t["cultivares"] else None)
                         or (_unico(r["cultivares"]) if r and not isinstance(_unico(r["cultivares"]), list) else None),
             "categoria": base.get("categoria") or (_unico(r["categorias"]) if r and not isinstance(_unico(r["categorias"]), list) else None),
@@ -694,12 +721,42 @@ def provar_somente_leitura():
 
 # ---------------------------------------------------------------- gravação (só lots/ no seedmax)
 
-def gravar_lots(docs, simular=False):
+def planejar_gravacao(docs, atuais, carimbo=None):
+    """Plano de gravação, sem rede. atuais = {lotId: {hash, presente, lotCode, crop}}.
+    Devolve {"gravar": {id: doc}, "marcar": {id: patch}, "iguais": n, "substituidos": n,
+             "ausentes": n, "perdidos": [ids]}.
+    Nunca apaga. Documento antigo cujo código ganhou outro lotId (SEMSAFRA_X →
+    SOJA2526_X) fica presente=false com substituidoPor; documento que sumiu
+    de todas as fontes fica presente=false (como antes) e é listado em 'perdidos'."""
+    por_codigo = {d["lotCode"]: i for i, d in docs.items()}
+    plano = {"gravar": {}, "marcar": {}, "iguais": 0, "substituidos": 0, "ausentes": 0, "perdidos": []}
+    for lot_id, doc in docs.items():
+        a = atuais.get(lot_id) or {}
+        if a.get("hash") == doc["hash"] and a.get("presente", True):
+            plano["iguais"] += 1
+        else:
+            plano["gravar"][lot_id] = doc
+    for lot_id, a in atuais.items():
+        if lot_id in docs or a.get("presente", True) is False:
+            continue
+        code = a.get("lotCode") or (lot_id.split("_", 1)[1] if "_" in lot_id else lot_id)
+        novo = por_codigo.get(codigo_lote(code))
+        if novo:
+            plano["marcar"][lot_id] = {"presente": False, "substituidoPor": novo, "mescladoEm": carimbo}
+            plano["substituidos"] += 1
+        else:
+            plano["marcar"][lot_id] = {"presente": False}
+            plano["ausentes"] += 1
+            plano["perdidos"].append(lot_id)
+    return plano
+
+
+def gravar_lots(docs, simular=False, carimbo=None, destino=None):
     import seedmax_dados as store
-    destino = store.conectar()
+    destino = destino or store.conectar()
     col = destino.db.collection("lots")
-    atuais = {d.id: (d.to_dict() or {}) for d in col.select(["hash", "presente"]).stream()}
-    novos, iguais, ausentes = 0, 0, 0
+    atuais = {d.id: (d.to_dict() or {}) for d in col.select(["hash", "presente", "lotCode", "crop"]).stream()}
+    plano = planejar_gravacao(docs, atuais, carimbo)
     batch, n = destino.db.batch(), 0
 
     def enviar():
@@ -708,24 +765,38 @@ def gravar_lots(docs, simular=False):
             batch.commit()
         batch, n = destino.db.batch(), 0
 
-    for lot_id, doc in docs.items():
-        if atuais.get(lot_id, {}).get("hash") == doc["hash"] and atuais[lot_id].get("presente", True):
-            iguais += 1
-            continue
+    for lot_id, doc in plano["gravar"].items():
         batch.set(col.document(lot_id), doc)
         n += 1
-        novos += 1
         if n >= 400:
             enviar()
-    for lot_id, a in atuais.items():
-        if lot_id not in docs and a.get("presente", True):
-            batch.set(col.document(lot_id), {"presente": False}, merge=True)  # nunca apaga
-            n += 1
-            ausentes += 1
-            if n >= 400:
-                enviar()
+    for lot_id, patch in plano["marcar"].items():
+        batch.set(col.document(lot_id), patch, merge=True)  # nunca apaga
+        n += 1
+        if n >= 400:
+            enviar()
     enviar()
-    return novos, iguais, ausentes
+    plano["atuaisPresentes"] = sum(1 for a in atuais.values() if a.get("presente", True))
+    return plano
+
+
+def estatisticas_uniao(qualidade, tsi, rastrel):
+    """Contagem por origem, união e duplicidades evitadas."""
+    Q, T, R = set(qualidade), set(tsi or {}), set(rastrel or {})
+    uniao = Q | T | R
+    grafias = 0
+    for fonte in (qualidade, tsi or {}, rastrel or {}):
+        for x in fonte.values():
+            variantes = x.get("codigosOriginais") or set()
+            grafias += max(0, len(variantes) - 1)
+    return {
+        "qualidade": len(Q), "tsi": len(T), "rastrel": len(R), "uniao": len(uniao),
+        "soQualidade": len(Q - T - R), "soTsi": len(T - Q - R), "soRastrel": len(R - Q - T),
+        "qualidadeTsi": len((Q & T) - R), "qualidadeRastrel": len((Q & R) - T), "tsiRastrel": len((T & R) - Q),
+        "tresFontes": len(Q & T & R),
+        "mesclasEntreFontes": len(Q) + len(T) + len(R) - len(uniao),
+        "grafiasUnificadas": grafias,
+    }
 
 
 def sincronizar(simular=False):
@@ -771,9 +842,18 @@ def sincronizar(simular=False):
         print(f"{rotulos[n]}: {lotes_n} ({total_n} alertas)")
     print("Lotes sem nenhum alerta:", sum(1 for d in docs.values() if not d["divergencias"]))
     print("Cultivares:", len({d["cultivar"] for d in docs.values() if d["cultivar"]}))
-    novos, iguais, ausentes = gravar_lots(docs, simular=simular)
-    print(f"lots/: {novos} gravados, {iguais} sem mudança, {ausentes} marcados presente=false"
+    e = estatisticas_uniao(q, t, r)
+    print("Cadastro Mestre:", json.dumps(e, ensure_ascii=False))
+    faltando = [c for c in q if montar_lot_id(SAFRA_ATIVA, c) not in docs]
+    if faltando:
+        raise SystemExit(f"ERRO: lotes da Qualidade fora do consolidado: {faltando[:20]}")
+    p = gravar_lots(docs, simular=simular, carimbo=carimbo)
+    print(f"lots/: {len(p['gravar'])} gravados, {p['iguais']} sem mudança, "
+          f"{p['substituidos']} antigos substituídos (presente=false, substituidoPor), "
+          f"{p['ausentes']} sumiram das fontes (presente=false)"
           + (" (SIMULAÇÃO — nada gravado)" if simular else ""))
+    if p["perdidos"]:
+        print("Sumiram de todas as fontes:", ", ".join(sorted(p["perdidos"])[:50]))
 
 
 if __name__ == "__main__":
