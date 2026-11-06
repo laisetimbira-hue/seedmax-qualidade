@@ -1705,6 +1705,71 @@ html {
 
   <!-- LOTES PAGE -->
   <div class="page" id="page-lotes">
+    <style>
+      /* Lotes Detalhados: seleção de lotes para o relatório de Qualidade (estado só da tela) */
+      table th.ld-selcol, table td.ld-selcol { width: 34px; text-align: center; padding-left: 8px; padding-right: 4px; }
+      table td.ld-selcol { cursor: pointer; }
+      table .ld-selcol input { -webkit-appearance: checkbox; appearance: auto; width: 17px; height: 17px; min-width: 0; padding: 0; margin: 0; border: 0; accent-color: var(--accent); cursor: pointer; vertical-align: middle; }
+      tr.ld-sel-on > td { background: var(--accent-dim); }
+      .ld-sel-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 10px; }
+      .ld-sel-txt { font-size: 0.84rem; color: var(--texto2); margin-right: 4px; }
+      .ld-sel-txt b { color: var(--texto); }
+      .ld-btn { border: 1px solid var(--borda2); background: var(--card); color: var(--texto); border-radius: 8px; padding: 8px 12px; font-size: 0.82rem; font-weight: 600; cursor: pointer; font-family: var(--font-body); }
+      .ld-btn:hover:not(:disabled) { background: var(--bg3); }
+      .ld-btn:disabled { opacity: .45; cursor: not-allowed; }
+      .ld-btn-pri:not(:disabled) { background: var(--accent); border-color: var(--accent); color: #fff; }
+      .ld-btn-pri:hover:not(:disabled) { background: var(--accent); filter: brightness(.95); }
+      #ld-print { display: none; }
+      @media print {
+        body.ld-imprimindo > *:not(#ld-print) { display: none !important; }
+        html.ld-imprimindo, body.ld-imprimindo { background: #fff !important; margin: 0 !important; padding: 0 !important; min-width: 0 !important; }
+        body.ld-imprimindo #ld-print { display: block !important; }
+      }
+      #ld-print { color: #000; background: #fff; font-family: var(--font-body); font-size: 9.5pt; line-height: 1.35; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      #ld-print tr, #ld-print td { background: none !important; }
+      #ld-print td, #ld-print th { white-space: normal !important; overflow-wrap: break-word; }
+      #ld-print .ldp-tab { width: 100%; border-collapse: collapse; table-layout: fixed; }
+      #ld-print .ldp-tab > thead > tr > td, #ld-print .ldp-tab > tbody > tr > td { padding: 0; border: 0; vertical-align: top; }
+      #ld-print .ldp-run { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #c9ced6; padding: 0 0 4px; margin: 0 0 8px; font-size: 7.5pt; color: #3a3a3a; }
+      #ld-print .ldp-run img { height: 16px; width: auto; }
+      #ld-print .ldp-run-t { font-weight: 700; color: #000; letter-spacing: .3px; }
+      #ld-print .ldp-run-d { margin-left: auto; }
+      #ld-print .ldp-capa { display: flex; align-items: center; gap: 14px; border: 1px solid #c9ced6; border-radius: 8px; padding: 12px 14px; margin: 0 0 14px; break-inside: avoid; }
+      #ld-print .ldp-capa img { height: 42px; width: auto; }
+      #ld-print .ldp-capa h1 { font-family: var(--font-head); font-size: 17pt; margin: 0; line-height: 1.1; color: #000; }
+      #ld-print .ldp-capa-s { font-size: 8.5pt; color: #3a3a3a; margin-top: 3px; }
+      #ld-print .ldp-lista { width: 100%; border-collapse: collapse; font-size: 8pt; margin-top: 4px; }
+      #ld-print .ldp-lista th { text-align: left; background: #f2f4f7 !important; border-bottom: 1px solid #c9ced6; padding: 4px 6px; font-size: 7pt; text-transform: uppercase; letter-spacing: .4px; white-space: nowrap !important; }
+      #ld-print .ldp-lista td { border-bottom: 1px solid #e3e6eb; padding: 4px 6px; }
+      #ld-print .ldp-lista td:first-child { white-space: nowrap !important; }
+      #ld-print .ldp-lista tr { break-inside: avoid; }
+      #ld-print .n { text-align: right; }
+      #ld-print .ldp-sub { color: #3a3a3a; font-size: 8.5pt; }
+      #ld-print .ldp-rodape { margin-top: 10px; font-size: 7pt; color: #3a3a3a; }
+      #ld-print .ldp-lote { break-before: page; page-break-before: always; break-inside: avoid; page-break-inside: avoid; }
+      #ld-print .ldp-lote-head { display: flex; align-items: flex-end; gap: 10px; border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 10px; }
+      #ld-print .ldp-lote-head h2 { font-family: var(--font-head); font-size: 22pt; line-height: 1; margin: 0; color: #000; }
+      #ld-print .ldp-eti { font-size: 7pt; text-transform: uppercase; letter-spacing: .6px; color: #3a3a3a; font-weight: 700; }
+      #ld-print .ldp-lote-st { margin-left: auto; text-align: right; }
+      #ld-print .ldp-lote-n { font-size: 7.5pt; color: #3a3a3a; margin-top: 4px; }
+      #ld-print .ldp-sec { margin-top: 10px; break-inside: avoid; page-break-inside: avoid; }
+      #ld-print .ldp-sec h3 { font-family: var(--font-head); font-size: 10pt; letter-spacing: .4px; text-transform: uppercase; margin: 0 0 5px; padding-bottom: 3px; border-bottom: 1px solid #c9ced6; color: #000; }
+      #ld-print .ldp-kv { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px 14px; border: 1px solid #e3e6eb; border-radius: 8px; padding: 8px 10px; }
+      #ld-print .ldp-kv.ldp-kv4 { grid-template-columns: repeat(4, 1fr); margin-bottom: 6px; }
+      #ld-print .ldp-kv .k { font-size: 6.4pt; text-transform: uppercase; letter-spacing: .5px; color: #3a3a3a; font-weight: 700; }
+      #ld-print .ldp-kv .v { font-weight: 700; font-size: 9.5pt; }
+      #ld-print .ldp-res { width: 100%; border-collapse: collapse; font-size: 9pt; border: 1px solid #e3e6eb; }
+      #ld-print .ldp-res th { text-align: left; font-size: 6.6pt; text-transform: uppercase; letter-spacing: .5px; color: #3a3a3a; background: #f2f4f7 !important; padding: 5px 8px; border-bottom: 1px solid #c9ced6; }
+      #ld-print .ldp-res td { padding: 5px 8px; border-bottom: 1px solid #e3e6eb; }
+      #ld-print .ldp-res th.n { text-align: right; }
+      #ld-print .ldp-dano { width: 60%; }
+      #ld-print .ldp-mono { font-family: var(--font-mono); }
+      #ld-print .ldp-vazio { color: #3a3a3a; font-size: 9pt; }
+      #ld-print .rank-badge { font-size: 7.5pt; }
+      #ld-print .ldp-st { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 7.5pt; font-weight: 700; }
+      #ld-print .ldp-st.ok { background: #F0FDF4; color: #15803D; border: 1px solid #BBF7D0; }
+      #ld-print .ldp-st.no { background: #FEF2F2; color: #B91C1C; border: 1px solid #FECACA; }
+    </style>
     <div class="filter-bar">
       <input type="text" id="lote-search" placeholder="🔍 Buscar lote, cultivar ou nome..." oninput="filterLotes()">
       <select id="lote-cultivar" onchange="filterLotes()">
@@ -1734,11 +1799,18 @@ html {
       <button id="btn-export-lotes" onclick="exportarPrintLotes()" style="display:flex;align-items:center;gap:6px;padding:8px 14px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:0.82rem;font-weight:700;cursor:pointer;white-space:nowrap;">📸 Print</button>
     </div>
     <div id="export-lotes-warning" style="display:none;font-size:0.75rem;color:#D97706;margin:-8px 0 12px 2px;">⚠️ Lista grande (<span id="export-lotes-warning-count"></span> lotes) — a imagem ficará bem longa. Considere filtrar mais antes de exportar, se for só pra conferência rápida.</div>
+    <div class="ld-sel-bar" role="toolbar" aria-label="Seleção de lotes para impressão">
+      <span class="ld-sel-txt" id="ld-sel-txt" aria-live="polite">Nenhum lote selecionado</span>
+      <button class="ld-btn" type="button" id="ld-sel-exibidos" onclick="ldSelVerao.exibidos()">Selecionar exibidos</button>
+      <button class="ld-btn" type="button" id="ld-sel-limpar" onclick="ldSelVerao.limpar()" disabled>Limpar seleção</button>
+      <button class="ld-btn ld-btn-pri" type="button" id="ld-sel-imprimir" onclick="ldSelVerao.imprimir()" disabled>🖨️ Imprimir / Salvar PDF</button>
+    </div>
     <div class="panel">
       <div class="lotes-table-wrap" id="lotes-wrap">
         <table id="lote-table">
           <thead>
             <tr>
+              <th class="ld-selcol" title="Selecionar lotes para impressão">✓</th>
               <th style="width:32px;"></th>
               <th onclick="sortTable('lote')">Lote</th>
               <th onclick="sortTable('cultivar')">Cultivar</th>
@@ -2241,11 +2313,18 @@ html {
       </select>
       <div class="count-badge">Exibindo <span id="inverno-lotes-count">—</span> lotes</div>
     </div>
+    <div class="ld-sel-bar" role="toolbar" aria-label="Seleção de lotes de inverno para impressão">
+      <span class="ld-sel-txt" id="ldi-sel-txt" aria-live="polite">Nenhum lote selecionado</span>
+      <button class="ld-btn" type="button" id="ldi-sel-exibidos" onclick="ldSelInverno.exibidos()">Selecionar exibidos</button>
+      <button class="ld-btn" type="button" id="ldi-sel-limpar" onclick="ldSelInverno.limpar()" disabled>Limpar seleção</button>
+      <button class="ld-btn ld-btn-pri" type="button" id="ldi-sel-imprimir" onclick="ldSelInverno.imprimir()" disabled>🖨️ Imprimir / Salvar PDF</button>
+    </div>
     <div class="panel">
       <div class="lotes-table-wrap">
         <table>
           <thead>
             <tr>
+              <th class="ld-selcol" title="Selecionar lotes para impressão">✓</th>
               <th onclick="sortTableInvernoLotes('data')" class="col-hide-mobile">Data</th>
               <th onclick="sortTableInvernoLotes('cultura')">Cultura</th>
               <th onclick="sortTableInvernoLotes('cultivar')">Cultivar</th>
@@ -2641,16 +2720,19 @@ function sortTableInvernoLotes(key) {
 
 function renderInvernoLotesTable() {
   document.getElementById('inverno-lotes-count').textContent = filteredInvernoLotes.length;
+  const _ldSel = typeof ldSelInverno !== 'undefined' ? ldSelInverno : null;   // seleção para impressão (Lotes Detalhados de inverno)
+  if (_ldSel) setTimeout(() => _ldSel.barra(), 0);
   if (!LOTS_INVERNO.length) {
-    document.getElementById('inverno-lotes-tbody').innerHTML = `<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--texto2);">Nenhum lote de Inverno registrado ainda.</td></tr>`;
+    document.getElementById('inverno-lotes-tbody').innerHTML = `<tr><td colspan="10" style="text-align:center;padding:32px;color:var(--texto2);">Nenhum lote de Inverno registrado ainda.</td></tr>`;
     return;
   }
   if (!filteredInvernoLotes.length) {
-    document.getElementById('inverno-lotes-tbody').innerHTML = `<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--texto2);">Nenhum lote encontrado com os filtros selecionados.</td></tr>`;
+    document.getElementById('inverno-lotes-tbody').innerHTML = `<tr><td colspan="10" style="text-align:center;padding:32px;color:var(--texto2);">Nenhum lote encontrado com os filtros selecionados.</td></tr>`;
     return;
   }
   document.getElementById('inverno-lotes-tbody').innerHTML = filteredInvernoLotes.map(l => `
-    <tr>
+    <tr${_ldSel ? _ldSel.linhaClasse(l) : ''}>
+      ${_ldSel ? _ldSel.celula(l) : '<td class="ld-selcol"></td>'}
       <td class="col-hide-mobile">${l.data||'—'}</td>
       <td>${l.cultura}</td>
       <td style="font-size:0.74rem;">${l.cultivar}</td>
@@ -4060,8 +4142,10 @@ function renderLoteTable() {
   document.getElementById('lote-count').textContent = filteredLots.length;
   // Close any open TZ row when re-rendering
   currentExpandedLote = null;
+  const _ldSel = typeof ldSelVerao !== 'undefined' ? ldSelVerao : null;   // seleção para impressão (Lotes Detalhados)
   document.getElementById('lote-tbody').innerHTML = filteredLots.map((l, idx) => `
-    <tr>
+    <tr${_ldSel ? _ldSel.linhaClasse(l) : ''}>
+      ${_ldSel ? _ldSel.celula(l) : '<td class="ld-selcol"></td>'}
       <td style="padding:6px 8px;text-align:center;">
         <button onclick="toggleTZ('${l.lote}', ${idx})" id="tz-btn-${idx}"
           style="background:none;border:1px solid var(--borda2);border-radius:5px;width:24px;height:24px;
@@ -4107,11 +4191,12 @@ function renderLoteTable() {
       </td>
     </tr>
     <tr id="tz-row-${idx}" style="display:none;background:var(--bg3);">
-      <td colspan="20" style="padding:0;">
+      <td colspan="21" style="padding:0;">
         <div id="tz-body-${idx}" style="padding:14px 16px;"></div>
       </td>
     </tr>
   `).join('');
+  if (_ldSel) _ldSel.barra();
 }
 
 // ===================== LOTES COMPRADOS =====================
@@ -5628,6 +5713,219 @@ setupMapaDragDrop();
     </button>
   </div>
 </div>
+<script type="text/seedmax-app">
+// =================== LOTES DETALHADOS — seleção e relatório de Qualidade ===================
+// Somente no navegador e somente leitura: usa os lotes já carregados na tela
+// (LOTS / TZ_DATA no verão, LOTS_INVERNO no inverno). Não grava nada no Firestore,
+// não usa localStorage e não consulta TSI nem RASTREL. A seleção vale até
+// "Limpar seleção" ou recarregar a página, e não depende dos filtros.
+function ldEsc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function ldNum(v, d) { return v == null || v === '' || (typeof v === 'number' && isNaN(v)) ? null : Number(v).toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d }); }
+function ldPct(v, d) { const s = ldNum(v, d == null ? 1 : d); return s == null ? '—' : s + '%'; }
+function ldVal(v, suf) { return v == null || v === '' ? '—' : ldEsc(v) + (suf || ''); }
+
+// Uma seleção por tabela (verão e inverno), com a mesma mecânica.
+function ldCriarSelecao(cfg) {
+  const sel = new Set();
+  const el = s => document.getElementById(cfg.ids[s]);
+  const api = {
+    sel,
+    tem: k => sel.has(k),
+    celula(l) {
+      const k = cfg.chave(l);
+      return '<td class="ld-selcol"><input type="checkbox" class="ld-sel-chk" data-k="' + ldEsc(k) + '"' + (sel.has(k) ? ' checked' : '') +
+        ' aria-label="Selecionar lote ' + ldEsc(l.lote || '') + ' para impressão"></td>';
+    },
+    linhaClasse: l => sel.has(cfg.chave(l)) ? ' class="ld-sel-on"' : '',
+    alternar(k, on) {
+      if (on) sel.add(k); else sel.delete(k);
+      api.sincronizar();
+    },
+    exibidos() { cfg.lista().forEach(l => sel.add(cfg.chave(l))); api.sincronizar(); },
+    limpar() { sel.clear(); api.sincronizar(); },
+    sincronizar() {
+      document.querySelectorAll('#' + cfg.tbody + ' input.ld-sel-chk').forEach(c => {
+        const on = sel.has(c.dataset.k); c.checked = on;
+        const tr = c.closest('tr'); if (tr) tr.classList.toggle('ld-sel-on', on);
+      });
+      api.barra();
+    },
+    barra() {
+      const txt = el('txt'); if (!txt) return;
+      const n = sel.size;
+      const exib = new Set(cfg.lista().map(cfg.chave));
+      const fora = n ? [...sel].filter(k => !exib.has(k)).length : 0;
+      txt.innerHTML = !n ? 'Nenhum lote selecionado'
+        : '<b>' + n + '</b> ' + (n === 1 ? 'lote selecionado' : 'lotes selecionados') +
+          (fora ? ' <span style="color:var(--texto3);">(' + fora + ' fora dos filtros atuais)</span>' : '');
+      el('imprimir').disabled = !n;
+      el('limpar').disabled = !n;
+      el('exibidos').disabled = !cfg.lista().length;
+    },
+    imprimir() {
+      if (!sel.size) return;
+      const todos = cfg.todos(), mapa = new Map(todos.map(l => [cfg.chave(l), l]));
+      const lotes = [...sel].map(k => mapa.get(k)).filter(Boolean)
+        .sort((a, b) => String(a.lote || '').localeCompare(String(b.lote || ''), 'pt-BR', { numeric: true }));
+      if (!lotes.length) return;
+      if (lotes.length > 100 && !confirm('Você selecionou ' + lotes.length + ' lotes (uma página por lote). Gerar o relatório mesmo assim?')) return;
+      ldImprimir(cfg.titulo, lotes, cfg.resumo, cfg.pagina);
+    }
+  };
+  // a caixinha (ou a célula dela) só marca/desmarca — não mexe no resto da linha
+  const tb = document.getElementById(cfg.tbody);
+  if (tb) tb.addEventListener('click', ev => {
+    const td = ev.target.closest('td.ld-selcol'); if (!td) return;
+    const c = td.querySelector('input.ld-sel-chk'); if (!c) return;
+    if (ev.target !== c) c.checked = !c.checked;
+    api.alternar(c.dataset.k, c.checked);
+  });
+  return api;
+}
+
+// ---------- página de impressão (A4, window.print → "Salvar como PDF") ----------
+function ldImprimir(titulo, lotes, resumoFn, paginaFn) {
+  const agora = new Date();
+  const emissao = agora.toLocaleDateString('pt-BR') + ' ' + agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const logoEl = document.querySelector('header .logo-area img');
+  const logo = logoEl && logoEl.src ? '<img src="' + logoEl.src + '" alt="Sementes com Vigor">' : '<b>Sementes com Vigor</b>';
+  const qtd = lotes.length + ' ' + (lotes.length === 1 ? 'lote' : 'lotes');
+  const run = '<div class="ldp-run">' + logo + '<span class="ldp-run-t">' + ldEsc(titulo) + '</span><span>· ' + qtd + '</span><span class="ldp-run-d">Emitido em ' + ldEsc(emissao) + '</span></div>';
+  const paginas = lotes.map((l, i) => '<section class="ldp-lote">' + paginaFn(l, i + 1, lotes.length) + '</section>').join('');
+  let box = document.getElementById('ld-print'); if (box) box.remove();
+  box = document.createElement('div'); box.id = 'ld-print'; box.setAttribute('aria-hidden', 'true');
+  // a tabela externa repete o cabeçalho discreto (thead) no topo de cada página
+  box.innerHTML = '<table class="ldp-tab"><thead><tr><td>' + run + '</td></tr></thead><tbody><tr><td>' +
+    '<div class="ldp-capa">' + logo + '<div><h1>' + ldEsc(titulo) + '</h1>' +
+      '<div class="ldp-capa-s">Emitido em <b>' + ldEsc(emissao) + '</b> · <b>' + qtd + '</b> selecionado' + (lotes.length === 1 ? '' : 's') + ' em Lotes Detalhados</div></div></div>' +
+    resumoFn(lotes) +
+    '<div class="ldp-rodape">Relatório técnico de Qualidade, com os dados de Lotes Detalhados no momento da emissão. Campos sem informação aparecem como “—”.</div>' +
+    paginas + '</td></tr></tbody></table>';
+  document.body.appendChild(box);
+  let pg = document.getElementById('ld-print-page');
+  if (!pg) { pg = document.createElement('style'); pg.id = 'ld-print-page'; document.head.appendChild(pg); }
+  pg.textContent = '@page { size: A4 portrait; margin: 11mm 10mm 12mm 10mm; }';
+  const tituloAntes = document.title;
+  document.title = 'SEEDMAX - Relatorio de Qualidade de Lotes - ' + agora.toISOString().slice(0, 10);   // nome sugerido do PDF
+  document.documentElement.classList.add('ld-imprimindo');
+  document.body.classList.add('ld-imprimindo');
+  const limpar = () => {
+    window.removeEventListener('afterprint', limpar);
+    document.documentElement.classList.remove('ld-imprimindo');
+    document.body.classList.remove('ld-imprimindo');
+    document.title = tituloAntes;
+    const b = document.getElementById('ld-print'); if (b) b.remove();
+    const p = document.getElementById('ld-print-page'); if (p) p.remove();
+  };
+  window.addEventListener('afterprint', limpar);
+  window.__ldPrintLimpar = limpar;   // usado pelos testes automáticos
+  setTimeout(() => { window.print(); }, 60);
+}
+
+// ---------- verão / soja: mesmos campos e nomes da tabela e do painel de Tetrazólio ----------
+function ldRankRotulo(l) {
+  return l.ranking === 'C' ? 'C — Cond.' : l.ranking === 'BV' ? 'BV — Cond. Vigor' : l.ranking === 'D' ? 'D — Ruim' : l.ranking === 'X' ? 'X — Pend.' : (l.ranking || '—') + (l.status ? ' — ' + l.status : '');
+}
+function ldRankBadge(l) { return l.ranking ? '<span class="rank-badge rank-' + ldEsc(l.ranking) + '">' + ldEsc(ldRankRotulo(l)) + '</span>' : '—'; }
+function ldSafraVerao(l) {
+  const m = /^SOJA(\d\d)(\d\d)_/.exec(String(l.lotId || ''));
+  return m ? 'Soja ' + m[1] + '/' + m[2] : null;
+}
+function ldNomeComercial(l) { return (typeof CV_META !== 'undefined' && CV_META[l.cultivar] && CV_META[l.cultivar].nome) || null; }
+function ldKv(k, v) { return '<div><div class="k">' + k + '</div><div class="v">' + (v == null || v === '' ? '—' : v) + '</div></div>'; }
+
+function ldResumoVerao(lotes) {
+  return '<table class="ldp-lista"><thead><tr><th>Lote</th><th>Cultivar</th><th>Cat.</th><th>Pen.</th><th class="n">Germ. Of.</th><th class="n">Vigor Of.</th><th class="n">TZ Viab.</th><th class="n">TZ Vigor</th><th class="n">PMS</th><th>Ranking</th></tr></thead><tbody>' +
+    lotes.map(l => '<tr><td><b>' + ldVal(l.lote) + '</b></td><td>' + ldVal(l.cultivar) + (ldNomeComercial(l) ? ' <span class="ldp-sub">' + ldEsc(ldNomeComercial(l)) + '</span>' : '') + '</td>' +
+      '<td>' + ldVal(l.categoria) + '</td><td>' + ldVal(l.peneira) + '</td>' +
+      '<td class="n">' + ldPct(l.germ_oficial, 0) + '</td><td class="n">' + ldPct(l.vigor_oficial, 0) + '</td>' +
+      '<td class="n">' + ldPct(l.tz_viab) + '</td><td class="n">' + ldPct(l.tz_vigor) + '</td>' +
+      '<td class="n">' + (l.pms_etq != null ? ldNum(l.pms_etq, 0) + ' g' : '—') + '</td><td>' + ldRankBadge(l) + '</td></tr>').join('') +
+    '</tbody></table>';
+}
+
+function ldPaginaVerao(l, i, total) {
+  const tz = (typeof TZ_DATA !== 'undefined' && TZ_DATA[l.lote]) || null;
+  const nome = ldNomeComercial(l);
+  const ident = '<div class="ldp-kv">' +
+    ldKv('Lote', '<span class="ldp-mono">' + ldVal(l.lote) + '</span>') + ldKv('Cultivar', ldVal(l.cultivar)) + ldKv('Nome comercial', ldVal(nome)) +
+    ldKv('Categoria', ldVal(l.categoria)) + ldKv('Safra', ldVal(ldSafraVerao(l))) + ldKv('Data', '—') +
+    ldKv('Peneira', ldVal(l.peneira)) + ldKv('UBS', ldVal(l.ubs)) + ldKv('Status de Qualidade', ldRankBadge(l)) + '</div>';
+  const qtd = '<div class="ldp-kv">' +
+    ldKv('KG', l.kg != null ? ldNum(l.kg, 0) + ' kg' : '—') + ldKv('Bags', l.bags != null ? ldNum(l.bags, 0) : '—') +
+    ldKv('Peso Bag', l.peso_bag != null ? ldNum(l.peso_bag, 0) + ' kg' : '—') + ldKv('Sem. (M)', l.sementes_m != null ? ldNum(l.sementes_m, 1) + 'M' : '—') + '</div>';
+  const res = '<table class="ldp-res"><thead><tr><th>Análise</th><th class="n">Resultado</th></tr></thead><tbody>' +
+    [['Germinação oficial (Germ. Of.)', ldPct(l.germ_oficial, 0)],
+     ['Vigor oficial (Vigor Of.)', ldPct(l.vigor_oficial, 0)],
+     ['Germinação (Germ. %)', ldPct(l.germ)],
+     ['Vigor — envelhecimento acelerado (Vigor E.A. %)', ldPct(l.vigor)],
+     ['Tetrazólio — viabilidade (TZ Viab.)', ldPct(l.tz_viab)],
+     ['Tetrazólio — vigor (TZ Vigor)', ldPct(l.tz_vigor)],
+     ['PMS', l.pms_etq != null ? ldNum(l.pms_etq, 0) + ' g' : '—'],
+     ['Umidade (Umid. %)', ldPct(l.umidade, 2)],
+     ['Dano mecânico — hipoclorito (DM %)', ldPct(l.hipoclorito, 1)],
+     ['Pureza', '—']].map(([k, v]) => '<tr><td>' + k + '</td><td class="n"><b>' + v + '</b></td></tr>').join('') + '</tbody></table>';
+  const p = v => v != null ? ldPct(v, Number.isInteger(v) ? 0 : 1) : '—';
+  const tzSec = tz ? '<div class="ldp-kv ldp-kv4">' + ldKv('TZ Viab. (1-5)', p(tz.tz_viab)) + ldKv('TZ Vigor (1-3)', p(tz.tz_vigor)) +
+        ldKv('Nível 1', p(tz.nivel1)) + ldKv('Nível 2', p(tz.nivel2)) + ldKv('Nível 3', p(tz.nivel3)) +
+        ldKv('3R subclasse', p(tz.r3)) + ldKv('Sem. Dura (SD)', p(tz.sd)) + '</div>' +
+      '<table class="ldp-res ldp-dano"><thead><tr><th>Dano</th><th class="n">4-5</th><th class="n">6-8</th><th class="n">Total</th></tr></thead><tbody>' +
+        [['DM', tz.dm45, tz.dm68, tz.dm18], ['DU', tz.du45, tz.du68, tz.du18], ['DP', tz.dp45, tz.dp68, tz.dp18]]
+          .map(([k, a, b, c]) => '<tr><td><b>' + k + '</b></td><td class="n">' + p(a) + '</td><td class="n">' + p(b) + '</td><td class="n"><b>' + p(c) + '</b></td></tr>').join('') +
+      '</tbody></table>'
+    : '<div class="ldp-vazio">Dados de Tetrazólio não disponíveis.</div>';
+  return '<div class="ldp-lote-head"><div><div class="ldp-eti">Lote</div><h2>' + ldVal(l.lote) + '</h2>' +
+      '<div class="ldp-sub">' + ldVal(l.cultivar) + (nome ? ' · ' + ldEsc(nome) : '') + '</div></div>' +
+      '<div class="ldp-lote-st">' + ldRankBadge(l) + '<div class="ldp-lote-n">' + i + ' de ' + total + '</div></div></div>' +
+    '<div class="ldp-sec"><h3>Identificação</h3>' + ident + '</div>' +
+    '<div class="ldp-sec"><h3>KG / quantidade</h3>' + qtd + '</div>' +
+    '<div class="ldp-sec"><h3>Resultados de Qualidade</h3>' + res + '</div>' +
+    '<div class="ldp-sec"><h3>Tetrazólio — detalhamento</h3>' + tzSec + '</div>';
+}
+
+// ---------- inverno (preparado: hoje usa os mesmos campos da tabela de inverno) ----------
+function ldResumoInverno(lotes) {
+  return '<table class="ldp-lista"><thead><tr><th>Lote</th><th>Data</th><th>Cultura</th><th>Cultivar</th><th>Categoria</th><th class="n">Germinação</th><th>Status</th><th class="n">KG</th></tr></thead><tbody>' +
+    lotes.map(l => '<tr><td><b>' + ldVal(l.lote) + '</b></td><td>' + ldVal(l.data) + '</td><td>' + ldVal(l.cultura) + '</td><td>' + ldVal(l.cultivar) + '</td><td>' + ldVal(l.categoria) + '</td>' +
+      '<td class="n">' + (l.germinacao != null ? ldEsc(l.germinacao) + '%' : '—') + '</td><td>' + ldVal(l.status) + '</td><td class="n">' + (l.kg != null ? ldNum(l.kg, 0) : '—') + '</td></tr>').join('') +
+    '</tbody></table>';
+}
+function ldPaginaInverno(l, i, total) {
+  const st = l.status ? '<span class="ldp-st ' + (l.status === 'Aprovado' ? 'ok' : 'no') + '">' + ldEsc(l.status) + '</span>' : '—';
+  return '<div class="ldp-lote-head"><div><div class="ldp-eti">Lote</div><h2>' + ldVal(l.lote) + '</h2>' +
+      '<div class="ldp-sub">' + ldVal(l.cultura) + ' · ' + ldVal(l.cultivar) + '</div></div>' +
+      '<div class="ldp-lote-st">' + st + '<div class="ldp-lote-n">' + i + ' de ' + total + '</div></div></div>' +
+    '<div class="ldp-sec"><h3>Identificação</h3><div class="ldp-kv">' +
+      ldKv('Lote', '<span class="ldp-mono">' + ldVal(l.lote) + '</span>') + ldKv('Cultura', ldVal(l.cultura)) + ldKv('Cultivar', ldVal(l.cultivar)) +
+      ldKv('Categoria', ldVal(l.categoria)) + ldKv('Data', ldVal(l.data)) + ldKv('Embalagem', ldVal(l.embalagem)) + '</div></div>' +
+    '<div class="ldp-sec"><h3>KG / quantidade</h3><div class="ldp-kv">' + ldKv('KG', l.kg != null ? ldNum(l.kg, 0) + ' kg' : '—') + '</div></div>' +
+    '<div class="ldp-sec"><h3>Resultados de Qualidade</h3><table class="ldp-res"><thead><tr><th>Análise</th><th class="n">Resultado</th></tr></thead><tbody>' +
+      '<tr><td>Germinação</td><td class="n"><b>' + (l.germinacao != null ? ldEsc(l.germinacao) + '%' : '—') + '</b></td></tr>' +
+      '<tr><td>Status</td><td class="n">' + st + '</td></tr></tbody></table></div>';
+}
+
+const ldSelVerao = ldCriarSelecao({
+  tbody: 'lote-tbody',
+  ids: { txt: 'ld-sel-txt', exibidos: 'ld-sel-exibidos', limpar: 'ld-sel-limpar', imprimir: 'ld-sel-imprimir' },
+  chave: l => l.lote,
+  lista: () => (typeof filteredLots !== 'undefined' ? filteredLots : []),
+  todos: () => (typeof LOTS !== 'undefined' ? LOTS : []),
+  titulo: 'SEEDMAX — Relatório de Qualidade de Lotes',
+  resumo: ldResumoVerao, pagina: ldPaginaVerao
+});
+const ldSelInverno = ldCriarSelecao({
+  tbody: 'inverno-lotes-tbody',
+  ids: { txt: 'ldi-sel-txt', exibidos: 'ldi-sel-exibidos', limpar: 'ldi-sel-limpar', imprimir: 'ldi-sel-imprimir' },
+  chave: l => (l.lote ? 'L:' + l.lote : 'I:' + LOTS_INVERNO.indexOf(l)),
+  lista: () => (typeof filteredInvernoLotes !== 'undefined' ? filteredInvernoLotes : []),
+  todos: () => (typeof LOTS_INVERNO !== 'undefined' ? LOTS_INVERNO : []),
+  titulo: 'SEEDMAX — Relatório de Qualidade de Lotes',
+  resumo: ldResumoInverno, pagina: ldPaginaInverno
+});
+// as tabelas podem ter sido desenhadas antes deste bloco rodar: redesenha para mostrar as caixinhas
+try { if (typeof renderLoteTable === 'function' && document.getElementById('lote-tbody').children.length) renderLoteTable(); else ldSelVerao.barra(); } catch (e) {}
+try { if (typeof renderInvernoLotesTable === 'function' && document.getElementById('inverno-lotes-tbody').children.length) renderInvernoLotesTable(); else ldSelInverno.barra(); } catch (e) {}
+</script>
 <script type="text/seedmax-app">
 var MAP_PASSWORD = null; // senha removida: o acesso agora é controlado pelo login
 var mapaUnlocked = true;  // liberado para quem passou pelo login
