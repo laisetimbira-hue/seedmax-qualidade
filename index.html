@@ -5835,12 +5835,11 @@ function ldNomeComercial(l) { return (typeof CV_META !== 'undefined' && CV_META[
 function ldKv(k, v) { return '<div><div class="k">' + k + '</div><div class="v">' + (v == null || v === '' ? '—' : v) + '</div></div>'; }
 
 function ldResumoVerao(lotes) {
-  return '<table class="ldp-lista"><thead><tr><th>Lote</th><th>Cultivar</th><th>Cat.</th><th>Pen.</th><th class="n">Germ. Of.</th><th class="n">Vigor Of.</th><th class="n">TZ Viab.</th><th class="n">TZ Vigor</th><th class="n">PMS</th><th>Ranking</th></tr></thead><tbody>' +
+  return '<table class="ldp-lista"><thead><tr><th>Lote</th><th>Cultivar</th><th>Cat.</th><th>Pen.</th><th class="n">PMS</th><th class="n">Germinação (Of.)</th><th class="n">Vigor Oficial</th><th>Ranking</th></tr></thead><tbody>' +
     lotes.map(l => '<tr><td><b>' + ldVal(l.lote) + '</b></td><td>' + ldVal(l.cultivar) + (ldNomeComercial(l) ? ' <span class="ldp-sub">' + ldEsc(ldNomeComercial(l)) + '</span>' : '') + '</td>' +
       '<td>' + ldVal(l.categoria) + '</td><td>' + ldVal(l.peneira) + '</td>' +
-      '<td class="n">' + ldPct(l.germ_oficial, 0) + '</td><td class="n">' + ldPct(l.vigor_oficial, 0) + '</td>' +
-      '<td class="n">' + ldPct(l.tz_viab) + '</td><td class="n">' + ldPct(l.tz_vigor) + '</td>' +
-      '<td class="n">' + (l.pms_etq != null ? ldNum(l.pms_etq, 0) + ' g' : '—') + '</td><td>' + ldRankBadge(l) + '</td></tr>').join('') +
+      '<td class="n">' + (l.pms_etq != null ? ldNum(l.pms_etq, 0) + ' g' : '—') + '</td>' +
+      '<td class="n">' + ldPct(l.germ_oficial, 0) + '</td><td class="n">' + ldPct(l.vigor_oficial, 0) + '</td><td>' + ldRankBadge(l) + '</td></tr>').join('') +
     '</tbody></table>';
 }
 
