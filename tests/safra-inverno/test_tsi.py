@@ -89,13 +89,18 @@ with sync_playwright() as p:
     # 1 — ordem antiga aparece
     pg.evaluate("document.querySelector('.nav-item[data-section=\"lotes\"]').click()")
     pg.wait_for_timeout(200)
-    ok("5001" in pg.inner_text("#tblLotes"), "ordem antiga de soja (sem safra) aparece na lista de ordens")
+    # desde safra-contexto a tela abre na Safra em operação (Inverno); a ordem antiga aparece em "Todas"
+    ok("5001" not in pg.inner_text("#tblLotes"), "com Inverno no topo, a ordem antiga de Verão não aparece por padrão")
+    pg.select_option("#lotesSafraFiltro", "todas"); pg.wait_for_timeout(150)
+    ok("5001" in pg.inner_text("#tblLotes"), "ordem antiga de soja (sem safra) aparece na lista de ordens (Todas as safras)")
     ok("Inverno" in pg.inner_text("#abertasBox") and "Cevada" in pg.inner_text("#abertasBox"), "ordem aberta de Inverno mostra o selo Inverno · Cevada")
 
     # Centro de Operações — filtros
     pg.evaluate("document.querySelector('.nav-item[data-section=\"centro\"]').click()")
     pg.select_option("#coPeriodo", "total")
     pg.wait_for_timeout(200)
+    ok(pg.input_value("#coSafra") == "INV2626", "Centro abre na Safra em operação (Inverno)")
+    pg.select_option("#coSafra", "todas"); pg.wait_for_timeout(150)
     ok("5001" in pg.inner_text("#coLotes"), "Centro (Todas) mostra a ordem antiga")
     pg.select_option("#coSafra", "SOJA2526"); pg.wait_for_timeout(150)
     ok("5001" in pg.inner_text("#coLotes"), "Centro (Verão) mostra a ordem antiga de soja")
