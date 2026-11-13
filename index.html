@@ -5735,7 +5735,7 @@ function ldCriarSelecao(cfg) {
     celula(l) {
       const k = cfg.chave(l);
       return '<td class="ld-selcol"><input type="checkbox" class="ld-sel-chk" data-k="' + ldEsc(k) + '"' + (sel.has(k) ? ' checked' : '') +
-        ' aria-label="Selecionar lote ' + ldEsc(l.lote || '') + ' para impressão"></td>';
+        ' aria-label="Selecionar lote ' + ldEsc(l.lote || '') + (l.cultura ? ' (' + ldEsc(l.cultura) + ')' : '') + ' para impressão"></td>';
     },
     linhaClasse: l => sel.has(cfg.chave(l)) ? ' class="ld-sel-on"' : '',
     alternar(k, on) {
@@ -5767,7 +5767,8 @@ function ldCriarSelecao(cfg) {
       if (!sel.size) return;
       const todos = cfg.todos(), mapa = new Map(todos.map(l => [cfg.chave(l), l]));
       const lotes = [...sel].map(k => mapa.get(k)).filter(Boolean)
-        .sort((a, b) => String(a.lote || '').localeCompare(String(b.lote || ''), 'pt-BR', { numeric: true }));
+        .sort((a, b) => String(a.lote || '').localeCompare(String(b.lote || ''), 'pt-BR', { numeric: true }) ||
+                        String(a.cultura || '').localeCompare(String(b.cultura || ''), 'pt-BR'));
       if (!lotes.length) return;
       if (lotes.length > 100 && !confirm('Você selecionou ' + lotes.length + ' lotes (uma página por lote). Gerar o relatório mesmo assim?')) return;
       ldImprimir(cfg.titulo, lotes, cfg.resumo, cfg.pagina);
@@ -5913,10 +5914,15 @@ const ldSelVerao = ldCriarSelecao({
   titulo: 'SEEDMAX — Relatório de Qualidade de Lotes',
   resumo: ldResumoVerao, pagina: ldPaginaVerao
 });
+// cultura normalizada para a chave de seleção (sem acento, maiúsculas): 'Aveia Branca' → 'AVEIA_BRANCA'
+function ldCulturaChave(c) {
+  return String(c == null ? '' : c).normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
 const ldSelInverno = ldCriarSelecao({
   tbody: 'inverno-lotes-tbody',
   ids: { txt: 'ldi-sel-txt', exibidos: 'ldi-sel-exibidos', limpar: 'ldi-sel-limpar', imprimir: 'ldi-sel-imprimir' },
-  chave: l => (l.lote ? 'L:' + l.lote : 'I:' + LOTS_INVERNO.indexOf(l)),
+  // chave = Cultura + Lote: o mesmo número de lote em culturas diferentes são seleções independentes
+  chave: l => (l.lote ? 'L:' + ldCulturaChave(l.cultura) + '|' + l.lote : 'I:' + LOTS_INVERNO.indexOf(l)),
   lista: () => (typeof filteredInvernoLotes !== 'undefined' ? filteredInvernoLotes : []),
   todos: () => (typeof LOTS_INVERNO !== 'undefined' ? LOTS_INVERNO : []),
   titulo: 'SEEDMAX — Relatório de Qualidade de Lotes',
