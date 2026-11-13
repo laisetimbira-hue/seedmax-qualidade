@@ -11,7 +11,12 @@ consolidando:
 
 Cadastro Mestre (nov/2026): lots/ é a UNIÃO  Qualidade ∪ TSI ∪ RASTREL.
   * Um lote aparece na Central se existir em QUALQUER uma das três fontes.
-  * A chave é sempre SAFRA_ATIVA + código normalizado (codigo_lote), venha o
+  * Verão e Inverno juntos (safra-inverno): a identidade do lote é
+    SAFRA + CULTURA + LOTE (montar_id_lote). Verão/Soja mantém o ID histórico
+    SOJA2526_<lote>; Inverno usa INV2626_<CULTURA>_<lote>. Registro sem
+    safra/cultura é LIDO como SOJA2526/Soja (nada é regravado na origem).
+    O mesmo número de lote em culturas/safras diferentes NUNCA é unido.
+  * A chave não depende da fonte (codigo_lote normaliza o código), venha o
     lote de onde vier — o mesmo lote nunca ganha um segundo documento quando
     aparece depois em outra fonte (antes, lote fora da Qualidade usava
     SEMSAFRA_<lote> e virava outro documento quando chegava na Qualidade).
@@ -54,15 +59,32 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 PROJETO_TSI = "estoquetsi"
 PROJETO_RASTREL = "rastreabilidade-a511a"
-# ---------------------------------------------------------------- SAFRA ATIVA
-# ÚNICO lugar para trocar a safra na Central de Lotes: lotId = SAFRA_LOTE.
-# Na virada de safra, trocar aqui E no TSI (estoquetsi/index.html → SAFRA_ATIVA,
-# logo antes do firebaseConfig), juntos. O robô avisa no log quando encontrar
-# ordens do TSI gravadas com outra safra.
+# ---------------------------------------------------------------- SAFRA PADRÃO DE LEITURA
+# Desde safra-inverno a Central consolida Verão e Inverno juntos (ver SAFRAS
+# abaixo). SAFRA_ATIVA continua sendo a safra usada para LER registros antigos
+# sem o campo "safra" (ordens do TSI e bags do RASTREL anteriores a nov/2026).
+# O robô avisa no log quando encontrar ordens com safra desconhecida.
 SAFRA_ATIVA = "SOJA2526"
 SAFRA_PADRAO = SAFRA_ATIVA   # nome antigo, mantido por compatibilidade
 SEM_SAFRA = "SEMSAFRA"
 ESQUEMA = 2   # 2 = Cadastro Mestre (chave única por lote, campo origens)
+
+# ---------------------------------------------------------------- SAFRAS (Verão + Inverno)
+# A Central consolida as duas safras ao mesmo tempo. Os códigos são os que a
+# Gestão de Qualidade já usa (seedmax_dados.SAFRA_VERAO / SAFRA_INVERNO).
+# A MESMA regra de identificador existe no TSI e no RASTREL (index.html →
+# montarIdLote); tests/test_regra_id_lote.py confere que as três dão o mesmo
+# resultado.
+SAFRA_VERAO = "SOJA2526"
+SAFRA_INVERNO = "INV2626"
+CULTURA_SOJA = "Soja"
+CULTURAS_INVERNO = ["Trigo", "Cevada", "Aveia Branca", "Aveia Preta", "Nabo",
+                    "Ervilha", "Ervilhaca", "Trigo Mourisco"]
+SAFRAS = {
+    SAFRA_VERAO: {"nome": "Verão 25/26", "culturas": [CULTURA_SOJA]},
+    SAFRA_INVERNO: {"nome": "Inverno 26/26", "culturas": CULTURAS_INVERNO},
+}
+SEM_CULTURA = "SEMCULTURA"
 
 # ---------------------------------------------------------------- situação
 # Ordem do fluxo: Qualidade → TSI → RASTREL → Expedição
@@ -104,6 +126,55 @@ def montar_lot_id(safra, lot_code):
 
 def _sem_acento(s):
     return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
+
+
+# ---------------------------------------------------------------- identidade SAFRA + CULTURA + LOTE
+# REGRA ÚNICA — idêntica a montarIdLote()/normalizarCultura()/safraDeLeitura()
+# /culturaDeLeitura() do TSI (estoquetsi/index.html) e do RASTREL.
+
+def normalizar_cultura(cultura):
+    """'Aveia Branca' → 'AVEIA_BRANCA'; 'Trigo' → 'TRIGO'. Seguro para ID."""
+    s = _sem_acento(str(cultura or "").strip().upper())
+    return re.sub(r"[^A-Z0-9]+", "_", s).strip("_")
+
+
+def safra_de_leitura(safra):
+    """Safra de um registro, só para LEITURA: vazia ou desconhecida → SOJA2526.
+    (Ordens/bags antigos não têm safra; nada é regravado.)"""
+    s = str(safra or "").strip().upper()
+    return s if s in SAFRAS else SAFRA_VERAO
+
+
+def safra_informada(safra):
+    return str(safra or "").strip().upper() in SAFRAS
+
+
+def cultura_de_leitura(cultura, safra):
+    """Nome da cultura para LEITURA: Verão → sempre 'Soja'; Inverno → o nome
+    canônico ('trigo' → 'Trigo'); vazio no Inverno → ''."""
+    safra = safra_de_leitura(safra)
+    if safra.startswith("SOJA"):
+        return CULTURA_SOJA
+    n = normalizar_cultura(cultura)
+    for c in SAFRAS[safra]["culturas"]:
+        if normalizar_cultura(c) == n:
+            return c
+    return str(cultura or "").strip()
+
+
+def montar_id_lote(safra, cultura, lote):
+    """Identificador estável do lote: SAFRA + CULTURA + LOTE.
+      Verão (SOJA…)  → SOJA2526_26S133C          (ID histórico preservado)
+      Inverno        → INV2626_TRIGO_27AB001
+      Inverno sem cultura informada → INV2626_SEMCULTURA_27AB001"""
+    code = codigo_lote(lote)
+    seguro = re.sub(r"[^A-Za-z0-9_-]+", "-", code).strip("-")
+    if not seguro:
+        return None
+    safra = safra_de_leitura(safra)
+    if safra.startswith("SOJA"):
+        return f"{safra}_{seguro}"
+    return f"{safra}_{normalizar_cultura(cultura) or SEM_CULTURA}_{seguro}"
 
 
 def cultivar_canonica(nome, apelidos):
@@ -156,15 +227,26 @@ def _num(v):
 
 # ---------------------------------------------------------------- resumos por módulo
 
+def _aprovacao_inverno(texto):
+    t = _sem_acento(str(texto or "").strip().upper())
+    if t.startswith("APROVAD"):
+        return "APROVADO"
+    if t.startswith("REPROVAD"):
+        return "REPROVADO"
+    return "PENDENTE"
+
+
 def resumir_qualidade(dados):
-    """{lotCode: resumo} a partir dos conjuntos da Qualidade (LOTS e
-    LOTES_COMPRADOS da safra de Verão)."""
+    """{lotId: resumo} a partir dos conjuntos da Qualidade:
+    Verão  — LOTS e LOTES_COMPRADOS (lotId = SOJA2526_<lote>, como antes);
+    Inverno — LOTS_INVERNO e LOTES_COMPRADOS_INVERNO (lotId = INV2626_<CULTURA>_<lote>)."""
     out = {}
     for fonte, lista in (("producao", dados.get("LOTS")), ("comprado", dados.get("LOTES_COMPRADOS"))):
         for x in lista or []:
             code = codigo_lote(x.get("lote"))
             if not code:
                 continue
+            lid = montar_id_lote(SAFRA_VERAO, CULTURA_SOJA, code)
             if fonte == "producao":
                 classe = (x.get("ranking") or "").strip().upper() or None
                 aprov = APROVACAO_POR_CLASSE.get(classe, "PENDENTE")
@@ -176,8 +258,9 @@ def resumir_qualidade(dados):
                 aprov = "APROVADO" if st == "APROVADO" else "PENDENTE"
                 rotulo = x.get("status") or "sem status"
                 categoria = x.get("categoria_reembalado") or x.get("categoria_origem")
-            vistos = (out.get(code) or {}).get("codigosOriginais", set()) | {str(x.get("lote"))}
-            out[code] = {
+            vistos = (out.get(lid) or {}).get("codigosOriginais", set()) | {str(x.get("lote"))}
+            out[lid] = {
+                "lotCode": code, "safra": SAFRA_VERAO, "cultura": CULTURA_SOJA,
                 "fonte": fonte,
                 "codigoOriginal": x.get("lote"),
                 "codigosOriginais": vistos,
@@ -194,6 +277,36 @@ def resumir_qualidade(dados):
                 "germ": _num(x.get("germ") if fonte == "producao" else x.get("germ_oficial")),
                 "vigor": _num(x.get("vigor") if fonte == "producao" else x.get("vigor_oficial")),
             }
+    # ---- Inverno (safra INV2626): cada lote traz a própria cultura
+    for fonte, lista in (("producao", dados.get("LOTS_INVERNO")),
+                         ("comprado", dados.get("LOTES_COMPRADOS_INVERNO"))):
+        for x in lista or []:
+            bruto = x.get("lote") or x.get("lote_origem")
+            code = codigo_lote(bruto)
+            if not code:
+                continue
+            cultura = cultura_de_leitura(x.get("cultura"), SAFRA_INVERNO)
+            lid = montar_id_lote(SAFRA_INVERNO, cultura, code)
+            st = x.get("status") if fonte == "producao" else (x.get("situacao") or x.get("status"))
+            vistos = (out.get(lid) or {}).get("codigosOriginais", set()) | {str(bruto)}
+            out[lid] = {
+                "lotCode": code, "safra": SAFRA_INVERNO, "cultura": cultura,
+                "fonte": fonte,
+                "codigoOriginal": bruto,
+                "codigosOriginais": vistos,
+                "cultivar": x.get("cultivar"),
+                "categoria": x.get("categoria"),
+                "peneira": x.get("peneira"),
+                "pms": _num(x.get("pms_etq") or x.get("pms")),
+                "bags": _num(x.get("bags")),
+                "kg": _num(x.get("kg")),
+                "pesoBag": _num(x.get("peso_bag")),
+                "classe": None,
+                "rotulo": st or "sem status",
+                "status": _aprovacao_inverno(st),
+                "germ": _num(x.get("germinacao")),
+                "vigor": _num(x.get("vigor")),
+            }
     return out
 
 
@@ -203,10 +316,12 @@ def resumir_tsi(ordens):
     vínculo. Desde nov/2026 o TSI exige o lote em toda ordem nova e grava em
     cada linha sourceLotCode/sourceLotId e treatedLotCode/treatedLotId
     (SAFRA_LOTE); quando existem, são usados no lugar de origem/destino.
-    Devolve ({lotCode: resumo}, estatísticas)."""
+    Safra/cultura da ORDEM (ordens antigas sem esses campos → SOJA2526/Soja)
+    entram na identidade: o mesmo lote em outra cultura é outro lote.
+    Devolve ({lotId: resumo}, estatísticas)."""
     out = {}
     est = {"ordens": 0, "ordensComLote": 0, "ordensSemLote": 0, "linhasDeLote": 0, "linhasComLotId": 0,
-           "lotePendente": 0, "safras": {}}
+           "lotePendente": 0, "safras": {}, "culturas": {}}
     for o in ordens or []:
         est["ordens"] += 1
         linhas = o.get("lotesDetalhe") or []
@@ -218,6 +333,10 @@ def resumir_tsi(ordens):
                 est["lotePendente"] += 1   # importada sem lote: o TSI só deixa fechar depois de informar
             continue
         est["ordensComLote"] += 1
+        safra = safra_de_leitura(o.get("safra"))
+        cultura = cultura_de_leitura(o.get("cultura"), safra)
+        chave_c = safra + "/" + (cultura or SEM_CULTURA)
+        est["culturas"][chave_c] = est["culturas"].get(chave_c, 0) + 1
         # No TSI, ordem "aberta" = importada/em tratamento; "fechada" ou sem
         # status (ordens antigas) = concluída e já baixou o estoque.
         concluida = (o.get("status") != "aberta")
@@ -229,10 +348,14 @@ def resumir_tsi(ordens):
                 continue
             if l.get("sourceLotId"):
                 est["linhasComLotId"] += 1
-            r = out.setdefault(src, {"ordens": [], "codigosOriginais": set(), "destinos": set(),
+            lid = montar_id_lote(safra, cultura, src)
+            r = out.setdefault(lid, {"lotCode": src, "safra": safra, "cultura": cultura,
+                                     "safraInformada": False,
+                                     "ordens": [], "codigosOriginais": set(), "destinos": set(),
                                      "idsDeclarados": set(), "tratadosDeclarados": set(),
                                      "cultivares": set(), "pms": set(), "pesosBag": set(), "qtdOrigem": 0.0,
                                      "qtdDestino": 0.0, "kg": 0.0, "concluidas": 0, "abertas": 0})
+            r["safraInformada"] = r["safraInformada"] or safra_informada(o.get("safra"))
             r["codigosOriginais"].add(str(l.get("origem")))
             r["destinos"].add(dst)
             if l.get("sourceLotId"):
@@ -265,16 +388,22 @@ def resumir_tsi(ordens):
 
 
 def resumir_rastrel(bags):
-    """bags = lista de documentos da coleção bags. Devolve {lotCode: resumo}."""
+    """bags = lista de documentos da coleção bags. Devolve {lotId: resumo}.
+    Bag antigo sem safra/cultura → SOJA2526/Soja (só na leitura)."""
     out = {}
     for b in bags or []:
         code = codigo_lote(b.get("lote"))
         if not code:
             continue
-        r = out.setdefault(code, {"bags": 0, "tags": 0, "kg": 0.0, "expedidos": 0, "emEstoque": 0,
+        safra = safra_de_leitura(b.get("safra"))
+        cultura = cultura_de_leitura(b.get("cultura"), safra)
+        lid = montar_id_lote(safra, cultura, code)
+        r = out.setdefault(lid, {"lotCode": code, "safra": safra, "cultura": cultura,
+                                 "safraInformada": False, "bags": 0, "tags": 0, "kg": 0.0, "expedidos": 0, "emEstoque": 0,
                                   "codigosOriginais": set(), "cultivares": {}, "categorias": {},
                                   "peneiras": {}, "tratamentos": {}, "status": {}})
         r["bags"] += 1
+        r["safraInformada"] = r["safraInformada"] or safra_informada(b.get("safra"))
         if b.get("epc"):
             r["tags"] += 1
         r["kg"] += _num(b.get("peso_kg")) or 0
@@ -420,18 +549,20 @@ def _etapas(q, t, r, tsi_conectado, rastrel_conectado):
 
 def consolidar(qualidade, tsi, rastrel, apelidos, carimbo,
                tsi_conectado=True, rastrel_conectado=True, safra=SAFRA_ATIVA, nomes=None, codigos_cv=None):
-    """Junta os três resumos por código de lote → {lotId: documento}."""
-    codigos = set(qualidade) | set(tsi or {}) | set(rastrel or {})
+    """Junta os três resumos pela identidade SAFRA+CULTURA+LOTE → {lotId: documento}.
+    As chaves dos resumos já SÃO o lotId (montar_id_lote)."""
+    chaves = set(qualidade) | set(tsi or {}) | set(rastrel or {})
     docs = {}
-    for code in sorted(codigos):
-        q = qualidade.get(code)
-        t = (tsi or {}).get(code)
-        r = (rastrel or {}).get(code)
-        # Cadastro Mestre: a chave NÃO depende da fonte — o mesmo código gera
-        # sempre o mesmo lotId (o TSI também grava SAFRA_ATIVA no sourceLotId).
-        # Sem Qualidade, a safra é a ativa, marcada como presumida.
-        crop = safra
-        lot_id = montar_lot_id(crop, code)
+    for lot_id in sorted(chaves):
+        q = qualidade.get(lot_id)
+        t = (tsi or {}).get(lot_id)
+        r = (rastrel or {}).get(lot_id)
+        # Cadastro Mestre: a chave NÃO depende da fonte — o mesmo lote gera
+        # sempre o mesmo lotId (o TSI e o RASTREL gravam o mesmo montarIdLote).
+        ref = q or t or r
+        code = ref["lotCode"]
+        crop = ref.get("safra") or safra
+        cultura = ref.get("cultura") or ""
         div = []
 
         # ---- lote: código digitado diferente da forma padrão
@@ -596,7 +727,9 @@ def consolidar(qualidade, tsi, rastrel, apelidos, carimbo,
             "lotCode": code,
             "crop": crop,
             "safra": crop,
-            "safraPresumida": not q,      # sem Qualidade: safra ativa presumida (não vem de um dado)
+            "safraPresumida": not q and not any(x and x.get("safraInformada") for x in (t, r)),
+            # sem Qualidade e sem safra gravada no TSI/RASTREL: SOJA2526 presumida (registro antigo)
+            "cultura": cultura or None,
             # de onde o lote é conhecido (cada bloco abaixo só existe se a fonte tiver o lote)
             "origens": {"qualidade": bool(q), "tsi": bool(t), "rastrel": bool(r)},
             "cultivar": base.get("cultivar") or (sorted(t["cultivares"])[0] if t and t["cultivares"] else None)
@@ -614,7 +747,7 @@ def consolidar(qualidade, tsi, rastrel, apelidos, carimbo,
             # TSI (fonte oficial: ordens, receita, origem/destino)
             "tsiStatus": tsi_status,
             "sourceLotId": lot_id if t else None,
-            "treatedLotId": (montar_lot_id(crop, treated) if treated else None),
+            "treatedLotId": (montar_id_lote(crop, cultura, treated) if treated else None),
             "tsi": None if not t else {
                 "ordens": sorted(t["ordens"], key=lambda o: (o.get("data") or "", o["ordem"])),
                 "bagsOrigem": round(t["qtdOrigem"], 2), "embalagensDestino": round(t["qtdDestino"], 2),
@@ -680,13 +813,15 @@ def _ler_colecao(cliente, nome, campos=None):
 def ler_tsi():
     c = _cliente_leitura(PROJETO_TSI, "TSI_CREDENCIAIS")
     return _ler_colecao(c, "lotesTratamento",
-                        ["numeroLote", "status", "data", "cultivar", "receitaNome", "lotesDetalhe"])
+                        ["numeroLote", "status", "data", "cultivar", "receitaNome", "lotesDetalhe",
+                         "safra", "cultura"])
 
 
 def ler_rastrel():
     c = _cliente_leitura(PROJETO_RASTREL, "RASTREL_CREDENCIAIS")
     return _ler_colecao(c, "bags",
-                        ["lote", "epc", "cultivar_nome", "categoria", "peneira", "peso_kg", "tratamento", "status"])
+                        ["lote", "epc", "cultivar_nome", "categoria", "peneira", "peso_kg", "tratamento", "status",
+                         "safra", "cultura"])
 
 
 def provar_somente_leitura():
@@ -721,14 +856,29 @@ def provar_somente_leitura():
 
 # ---------------------------------------------------------------- gravação (só lots/ no seedmax)
 
+def identidade_documento(lot_id, a):
+    """Identidade SAFRA+CULTURA+LOTE de um documento já gravado em lots/.
+    SEMSAFRA_X (documento antigo) e doc sem cultura → Verão/Soja, como antes."""
+    safra = str(a.get("crop") or a.get("safra") or (lot_id.split("_", 1)[0] if "_" in lot_id else "")).upper()
+    if safra in ("", SEM_SAFRA):
+        safra = SAFRA_VERAO
+    code = a.get("lotCode")
+    if not code:
+        if not safra.startswith("SOJA"):
+            return lot_id            # sem lotCode não dá para separar cultura/lote com segurança
+        code = lot_id.split("_", 1)[1] if "_" in lot_id else lot_id
+    return montar_id_lote(safra, a.get("cultura"), code)
+
+
 def planejar_gravacao(docs, atuais, carimbo=None):
-    """Plano de gravação, sem rede. atuais = {lotId: {hash, presente, lotCode, crop}}.
+    """Plano de gravação, sem rede. atuais = {lotId: {hash, presente, lotCode, crop, cultura}}.
     Devolve {"gravar": {id: doc}, "marcar": {id: patch}, "iguais": n, "substituidos": n,
              "ausentes": n, "perdidos": [ids]}.
-    Nunca apaga. Documento antigo cujo código ganhou outro lotId (SEMSAFRA_X →
-    SOJA2526_X) fica presente=false com substituidoPor; documento que sumiu
-    de todas as fontes fica presente=false (como antes) e é listado em 'perdidos'."""
-    por_codigo = {d["lotCode"]: i for i, d in docs.items()}
+    Nunca apaga. Documento antigo cuja IDENTIDADE (safra+cultura+lote) ganhou
+    outro lotId (SEMSAFRA_X → SOJA2526_X) fica presente=false com
+    substituidoPor; documento que sumiu de todas as fontes fica presente=false
+    (como antes) e é listado em 'perdidos'. Um lote de outra safra/cultura com
+    o mesmo número NUNCA substitui nem marca outro."""
     plano = {"gravar": {}, "marcar": {}, "iguais": 0, "substituidos": 0, "ausentes": 0, "perdidos": []}
     for lot_id, doc in docs.items():
         a = atuais.get(lot_id) or {}
@@ -739,8 +889,8 @@ def planejar_gravacao(docs, atuais, carimbo=None):
     for lot_id, a in atuais.items():
         if lot_id in docs or a.get("presente", True) is False:
             continue
-        code = a.get("lotCode") or (lot_id.split("_", 1)[1] if "_" in lot_id else lot_id)
-        novo = por_codigo.get(codigo_lote(code))
+        ident = identidade_documento(lot_id, a)
+        novo = ident if (ident in docs and ident != lot_id) else None
         if novo:
             plano["marcar"][lot_id] = {"presente": False, "substituidoPor": novo, "mescladoEm": carimbo}
             plano["substituidos"] += 1
@@ -755,7 +905,7 @@ def gravar_lots(docs, simular=False, carimbo=None, destino=None):
     import seedmax_dados as store
     destino = destino or store.conectar()
     col = destino.db.collection("lots")
-    atuais = {d.id: (d.to_dict() or {}) for d in col.select(["hash", "presente", "lotCode", "crop"]).stream()}
+    atuais = {d.id: (d.to_dict() or {}) for d in col.select(["hash", "presente", "lotCode", "crop", "cultura"]).stream()}
     plano = planejar_gravacao(docs, atuais, carimbo)
     batch, n = destino.db.batch(), 0
 
@@ -803,9 +953,14 @@ def sincronizar(simular=False):
     import seedmax_dados as store
     carimbo = datetime.now(timezone(timedelta(hours=-3))).strftime("%d/%m/%Y %H:%M")
     _, dados = store.ler_conjuntos(store.conectar())
-    apelidos = montar_apelidos(dados.get("CV_META"))
+    cv_meta = dict(dados.get("CV_META_INVERNO") or {}, **(dados.get("CV_META") or {}))
+    apelidos = montar_apelidos(cv_meta)
     q = resumir_qualidade(dados)
-    print(f"Qualidade: {len(q)} lotes")
+    por_safra = {}
+    for x in q.values():
+        k = x["safra"] + ("/" + x["cultura"] if not x["safra"].startswith("SOJA") else "")
+        por_safra[k] = por_safra.get(k, 0) + 1
+    print(f"Qualidade: {len(q)} lotes · {json.dumps(por_safra, ensure_ascii=False, sort_keys=True)}")
 
     tsi_on = os.environ.get("CENTRAL_TSI", "").lower() == "sim"
     rastrel_on = os.environ.get("CENTRAL_RASTREL", "").lower() == "sim"
@@ -814,9 +969,10 @@ def sincronizar(simular=False):
         t, est = resumir_tsi(ler_tsi())
         print(f"TSI: {est['ordens']} ordens, {est['ordensComLote']} com lote → {len(t)} lotes"
               f" · {est['linhasComLotId']} linhas com sourceLotId · {est['lotePendente']} abertas com LOTE PENDENTE")
-        outras = {k: v for k, v in est["safras"].items() if k != SAFRA_ATIVA}
+        print(f"TSI: ordens com lote por safra/cultura: {json.dumps(est['culturas'], ensure_ascii=False, sort_keys=True)}")
+        outras = {k: v for k, v in est["safras"].items() if k not in SAFRAS}
         if outras:
-            print(f"TSI: ATENÇÃO — ordens gravadas com safra diferente da ativa ({SAFRA_ATIVA}): {outras}")
+            print(f"TSI: ATENÇÃO — ordens gravadas com safra desconhecida (lidas como {SAFRA_VERAO}): {outras}")
     else:
         print("TSI: não conectado")
     r = {}
@@ -827,7 +983,7 @@ def sincronizar(simular=False):
         print("RASTREL: não conectado")
 
     docs = consolidar(q, t, r, apelidos, carimbo, tsi_conectado=tsi_on, rastrel_conectado=rastrel_on,
-                      nomes=montar_nomes(dados.get("CV_META")), codigos_cv=montar_codigos(dados.get("CV_META")))
+                      nomes=montar_nomes(cv_meta), codigos_cv=montar_codigos(cv_meta))
     cont = {}
     for d in docs.values():
         cont[d["situacao"]] = cont.get(d["situacao"], 0) + 1
@@ -844,7 +1000,7 @@ def sincronizar(simular=False):
     print("Cultivares:", len({d["cultivar"] for d in docs.values() if d["cultivar"]}))
     e = estatisticas_uniao(q, t, r)
     print("Cadastro Mestre:", json.dumps(e, ensure_ascii=False))
-    faltando = [c for c in q if montar_lot_id(SAFRA_ATIVA, c) not in docs]
+    faltando = [k for k in q if k not in docs]
     if faltando:
         raise SystemExit(f"ERRO: lotes da Qualidade fora do consolidado: {faltando[:20]}")
     p = gravar_lots(docs, simular=simular, carimbo=carimbo)
