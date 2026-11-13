@@ -156,7 +156,7 @@ def test_sourcelotcode_tem_prioridade_sobre_origem():
     o["lotesDetalhe"][0]["origem"] = " 26s300c. "   # texto livre antigo; o código padrão manda
     _, est = cl.resumir_tsi([o])
     t, _ = cl.resumir_tsi([o])
-    assert list(t) == ["26S300C"] and est["linhasComLotId"] == 1
+    assert list(t) == ["SOJA2526_26S300C"] and est["linhasComLotId"] == 1
 
 
 def test_codigo_lote_igual_ao_do_tsi():
@@ -178,7 +178,7 @@ def test_ordem_aberta_sem_lote_conta_como_pendente_e_nao_vincula():
     t, est = cl.resumir_tsi([pend, ordem_nova("9003", "26S1", safra="SOJA2627")])
     assert est["lotePendente"] == 1 and est["ordensSemLote"] == 1
     assert est["safras"] == {cl.SAFRA_ATIVA: 1, "SOJA2627": 1}
-    assert list(t) == ["26S1"]
+    assert list(t) == ["SOJA2526_26S1"]   # safra desconhecida (SOJA2627) é lida como SOJA2526, como antes
 
 
 # ---- Central V2: níveis de alerta e linha do tempo (só com evidência)
@@ -411,3 +411,118 @@ def test_tsi_e_rastrel_nunca_escrevem_dados_laboratoriais():
     doc = montar([], [o], b)["SOJA2526_26S107"]
     assert doc["qualidade"] is None and doc["qualidadeClasse"] is None and doc["pms"] is None
     assert doc["qualidadeStatus"] == "NÃO ENCONTRADO"
+
+
+# ---- safra-inverno: Verão + Inverno juntos, identidade SAFRA + CULTURA + LOTE
+
+def lote_inv(code, cultura="Trigo", status="Aprovado", cultivar="TBIO CALIBRE"):
+    return {"cultura": cultura, "cultivar": cultivar, "categoria": "S1", "lote": code,
+            "kg": 28000, "embalagem": "BIG BAG", "germinacao": 95, "status": status}
+
+
+def ordem_inv(num, code, cultura="Trigo", status="fechada"):
+    o = ordem(num, code, status=status)
+    o.update({"safra": "INV2626", "cultura": cultura, "cultivar": "TBIO CALIBRE"})
+    for l in o["lotesDetalhe"]:
+        l.update({"sourceLotCode": code, "treatedLotCode": code,
+                  "sourceLotId": cl.montar_id_lote("INV2626", cultura, code),
+                  "treatedLotId": cl.montar_id_lote("INV2626", cultura, code)})
+    return o
+
+
+def bags_inv(code, n, cultura="Trigo"):
+    bs = bags(code, n, cultivar="TBIO CALIBRE")
+    for b in bs:
+        b.update({"safra": "INV2626", "cultura": cultura})
+    return bs
+
+
+def montar_inv(dados, ordens=(), bs=()):
+    q = cl.resumir_qualidade(dados)
+    t, _ = cl.resumir_tsi(list(ordens))
+    r = cl.resumir_rastrel(list(bs))
+    return cl.consolidar(q, t, r, AP, "agora")
+
+
+def test_regra_id_lote():
+    assert cl.montar_id_lote("SOJA2526", "Soja", " 26s133c. ") == "SOJA2526_26S133C"   # Verão: ID histórico
+    assert cl.montar_id_lote(None, None, "26S133C") == "SOJA2526_26S133C"            # registro antigo
+    assert cl.montar_id_lote("INV2626", "Trigo", "27ab001") == "INV2626_TRIGO_27AB001"
+    assert cl.montar_id_lote("INV2626", "Aveia Branca", "X1") == "INV2626_AVEIA_BRANCA_X1"
+    assert cl.montar_id_lote("inv2626", "  trigo mourisco ", "X1") == "INV2626_TRIGO_MOURISCO_X1"
+    assert cl.montar_id_lote("INV2626", "", "X1") == "INV2626_SEMCULTURA_X1"
+    assert cl.montar_id_lote("INV2626", "Trigo", "  ") is None
+    assert cl.normalizar_cultura("Ervilhaca") == "ERVILHACA"
+    assert cl.cultura_de_leitura(None, None) == "Soja"
+    assert cl.cultura_de_leitura("aveia preta", "INV2626") == "Aveia Preta"
+
+
+def test_1_e_2_registros_antigos_sem_safra_continuam_soja2526():
+    d = montar([lote("40A")], [ordem("1", "40A")], bags("40A", 20))   # ordem e bags SEM safra/cultura
+    doc = d["SOJA2526_40A"]
+    assert set(d) == {"SOJA2526_40A"}
+    assert doc["safra"] == "SOJA2526" and doc["cultura"] == "Soja" and doc["situacao"] == "PRONTO"
+    assert doc["origens"] == {"qualidade": True, "tsi": True, "rastrel": True}
+
+
+def test_4_5_6_mesmo_lote_de_inverno_nas_tres_fontes_vira_um_registro():
+    d = montar_inv({"LOTS_INVERNO": [lote_inv("27AB001")]}, [ordem_inv("10", "27AB001")], bags_inv("27AB001", 20))
+    assert list(d) == ["INV2626_TRIGO_27AB001"]
+    doc = d["INV2626_TRIGO_27AB001"]
+    assert doc["safra"] == "INV2626" and doc["cultura"] == "Trigo" and doc["lotCode"] == "27AB001"
+    assert doc["modulos"] == ["QUALIDADE", "TSI", "RASTREL"]
+    assert doc["qualidadeStatus"] == "APROVADO"
+    assert doc["sourceLotId"] == doc["treatedLotId"] == "INV2626_TRIGO_27AB001"
+    assert not [x for x in doc["divergencias"] if x["codigo"] == "lotid_diferente"]
+    assert doc["safraPresumida"] is False
+
+
+def test_7_mesmo_numero_em_culturas_e_safras_diferentes_nao_une():
+    dados = {"LOTS": [lote("27AB001")],
+             "LOTS_INVERNO": [lote_inv("27AB001", "Trigo"), lote_inv("27AB001", "Cevada", cultivar="ANA 01")]}
+    d = montar_inv(dados, [ordem_inv("10", "27AB001", "Cevada")], bags_inv("27AB001", 5, "Trigo"))
+    assert set(d) == {"SOJA2526_27AB001", "INV2626_TRIGO_27AB001", "INV2626_CEVADA_27AB001"}
+    assert d["INV2626_CEVADA_27AB001"]["origens"] == {"qualidade": True, "tsi": True, "rastrel": False}
+    assert d["INV2626_TRIGO_27AB001"]["origens"] == {"qualidade": True, "tsi": False, "rastrel": True}
+    assert d["SOJA2526_27AB001"]["origens"] == {"qualidade": True, "tsi": False, "rastrel": False}
+
+
+def test_8_verao_e_inverno_consolidados_juntos_e_verao_inalterado():
+    so_verao = montar([lote("41A")], [ordem("1", "41A")], bags("41A", 20))
+    juntos = montar_inv({"LOTS": [lote("41A")], "LOTS_INVERNO": [lote_inv("27AB009")]},
+                        [ordem("1", "41A")], bags("41A", 20))
+    assert set(juntos) == {"SOJA2526_41A", "INV2626_TRIGO_27AB009"}
+    a, b = so_verao["SOJA2526_41A"], juntos["SOJA2526_41A"]
+    assert {k: v for k, v in a.items() if k != "hash"} == {k: v for k, v in b.items() if k != "hash"}
+
+
+def test_inverno_comprados_e_reprovado():
+    dados = {"LOTS_INVERNO": [lote_inv("27AB002", status="Reprovado")],
+             "LOTES_COMPRADOS_INVERNO": [{"cultura": "Aveia Preta", "cultivar": "EMBRAPA 139", "lote_origem": "ap-55",
+                                          "kg": 1000, "germinacao": 88, "situacao": "APROVADO"}]}
+    d = montar_inv(dados)
+    assert d["INV2626_TRIGO_27AB002"]["qualidadeStatus"] == "REPROVADO"
+    assert d["INV2626_AVEIA_PRETA_AP-55"]["qualidadeStatus"] == "APROVADO"
+    assert d["INV2626_AVEIA_PRETA_AP-55"]["cultura"] == "Aveia Preta"
+
+
+def test_planejar_gravacao_compara_identidade_e_nao_por_codigo():
+    docs = montar([lote("50A")])
+    # documento de Inverno com o MESMO número de lote, que sumiu da origem: fica ausente,
+    # NUNCA "substituído" pelo lote de Verão 50A.
+    atuais = {"INV2626_TRIGO_50A": {"hash": "x", "presente": True, "lotCode": "50A", "crop": "INV2626", "cultura": "Trigo"},
+              "SEMSAFRA_50A": {"hash": "y", "presente": True, "lotCode": "50A", "crop": "SEMSAFRA"}}
+    p = cl.planejar_gravacao(docs, atuais, "agora")
+    assert p["marcar"]["INV2626_TRIGO_50A"] == {"presente": False}
+    assert p["marcar"]["SEMSAFRA_50A"]["substituidoPor"] == "SOJA2526_50A"   # comportamento antigo preservado
+    assert p["perdidos"] == ["INV2626_TRIGO_50A"]
+    # e o inverso: lote de Inverno novo não marca o de Verão como ausente/substituído
+    docs2 = montar_inv({"LOTS_INVERNO": [lote_inv("50A")]})
+    p2 = cl.planejar_gravacao(docs2, {"SOJA2526_50A": {"hash": "z", "presente": True, "lotCode": "50A", "crop": "SOJA2526"}})
+    assert p2["marcar"]["SOJA2526_50A"] == {"presente": False} and p2["substituidos"] == 0
+
+
+def test_documento_lots_tem_cultura():
+    d = montar_inv({"LOTS": [lote("60A")], "LOTS_INVERNO": [lote_inv("60B", "Nabo", cultivar="CATI AL 1000")]})
+    assert d["SOJA2526_60A"]["cultura"] == "Soja"
+    assert d["INV2626_NABO_60B"]["cultura"] == "Nabo"

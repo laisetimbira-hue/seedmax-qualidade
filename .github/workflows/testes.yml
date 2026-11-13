@@ -39,4 +39,4 @@ jobs:
         with:
           python-version: '3.12'
       - name: Testar a consolidação da Central de Lotes
-        run: pip install --quiet pytest && python -m pytest tests/test_central_lotes.py -q
+        run: pip install --quiet pytest && python -m pytest tests/test_central_lotes.py tests/test_regra_id_lote.py -q

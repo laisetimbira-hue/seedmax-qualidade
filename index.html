@@ -2187,6 +2187,7 @@ html {
       <div class="filter-bar">
         <input type="text" id="central-search" placeholder="🔍 Lote, cultivar, nome comercial ou N° da ordem TSI..." oninput="filtrarCentralDebounce()">
         <select id="central-safra" onchange="filtrarCentral()"><option value="">Todas as Safras</option></select>
+        <select id="central-cultura" onchange="filtrarCentral()"><option value="">Todas as Culturas</option></select>
         <select id="central-cultivar" onchange="filtrarCentral()"><option value="">Todos os Cultivares</option></select>
         <select id="central-situacao" onchange="filtrarCentral()"><option value="">Todas as Situações</option></select>
         <select id="central-qualidade" onchange="filtrarCentral()"><option value="">Qualidade: todos</option></select>
@@ -6058,14 +6059,20 @@ function cNorm(s) { return String(s == null ? '' : s).normalize('NFD').replace(/
 // nível de um alerta (documentos antigos, sem "nivel", caem em DIVERGENCIA/AVISO pelo "tipo")
 function clNivel(d) { return d.nivel || (d.tipo === 'aviso' ? 'AVISO' : 'DIVERGENCIA'); }
 
+// Safra/cultura (safra-inverno). Documento antigo sem "cultura" é de Verão → Soja.
+const CL_SAFRA_NOME = { SOJA2526: 'Verão 25/26 — Soja (SOJA2526)', INV2626: 'Inverno 26/26 (INV2626)', SEMSAFRA: 'Sem safra (fora da Qualidade)' };
+function clCultura(x) { return x.cultura || (!x.crop || /^SOJA/.test(x.crop) || x.crop === 'SEMSAFRA' ? 'Soja' : ''); }
+function clSafraNome(v) { return CL_SAFRA_NOME[v] || v; }
+
 // pré-calcula uma vez por lote o que a busca, os filtros e a ordenação usam
 function prepararLoteCentral(x) {
+  x._cultura = clCultura(x);
   const ordens = (x.tsi && x.tsi.ordens) || [];
   const n = { DIVERGENCIA: 0, AVISO: 0, PENDENCIA: 0 };
   (x.divergencias || []).forEach(d => { n[clNivel(d)] = (n[clNivel(d)] || 0) + 1; });
   x._n = n;
   x._peso = n.DIVERGENCIA * 10000 + n.AVISO * 100 + n.PENDENCIA;
-  x._busca = cNorm([x.lotCode, x.lotId, x.cultivar, x.cultivarNome,
+  x._busca = cNorm([x.lotCode, x.lotId, x.cultivar, x.cultivarNome, x._cultura,
     ordens.map(o => o.ordem + ' ' + (o.treatedLotCode || '')).join(' ')].join(' | '));
   x._ordens = ordens.map(o => String(o.ordem));
   x._multi = (x.modulos || []).length > 1;
@@ -6096,7 +6103,8 @@ async function buildCentralLotes(forcar) {
   };
   const uniq = f => [...new Set(CENTRAL.map(f).filter(v => v != null && v !== ''))].sort((a, b) => String(a).localeCompare(String(b), 'pt-BR'));
   const nomeCv = {}; CENTRAL.forEach(x => { if (x.cultivar && x.cultivarNome) nomeCv[x.cultivar] = x.cultivarNome; });
-  opc('central-safra', uniq(x => x.crop), 'Todas as Safras', v => v === 'SEMSAFRA' ? 'Sem safra (fora da Qualidade)' : v);
+  opc('central-safra', uniq(x => x.crop), 'Todas as Safras', clSafraNome);
+  opc('central-cultura', uniq(x => x._cultura), 'Todas as Culturas');
   opc('central-cultivar', uniq(x => x.cultivar), 'Todos os Cultivares', v => nomeCv[v] ? v + ' — ' + nomeCv[v] : v);
   opc('central-situacao', CENTRAL_SIT_ORDEM.filter(s => CENTRAL.some(x => x.situacao === s)), 'Todas as Situações');
   opc('central-qualidade', uniq(x => x.qualidadeStatus), 'Qualidade: todos');
@@ -6123,11 +6131,11 @@ function filtrarCentralDebounce() { clearTimeout(_centralTimer); _centralTimer =
 function centralFiltrados(ignorarCultivar) {
   const val = id => document.getElementById(id).value;
   const termos = cNorm(document.getElementById('central-search').value.trim()).split(/\s+/).filter(Boolean);
-  const [sf, cv, si, ql, ts, rs, nv] = ['central-safra','central-cultivar','central-situacao','central-qualidade','central-tsi','central-rastrel','central-div'].map(val);
+  const [sf, cv, si, ql, ts, rs, nv, cu] = ['central-safra','central-cultivar','central-situacao','central-qualidade','central-tsi','central-rastrel','central-div','central-cultura'].map(val);
   const soAlerta = document.getElementById('central-so-alerta').checked, multi = document.getElementById('central-multi').checked;
   return CENTRAL.filter(x =>
     (!termos.length || termos.every(t => x._busca.includes(t) || x._ordens.includes(t))) &&
-    (!sf || x.crop === sf) && (ignorarCultivar || !cv || x.cultivar === cv) && (!si || x.situacao === si) &&
+    (!sf || x.crop === sf) && (!cu || x._cultura === cu) && (ignorarCultivar || !cv || x.cultivar === cv) && (!si || x.situacao === si) &&
     (!ql || x.qualidadeStatus === ql) && (!ts || x.tsiStatus === ts) && (!rs || x.rastrelStatus === rs) &&
     (!nv || (nv === 'NENHUM' ? !x._peso : x._n[nv] > 0)) &&
     (!soAlerta || x._n.DIVERGENCIA + x._n.AVISO > 0) && (!multi || x._multi) &&
@@ -6167,7 +6175,8 @@ function linhaCentral(x) {
   const sel = centralSel.has(x.lotId);
   return '<tr class="cl-row' + (sel ? ' cl-sel-on' : '') + '" data-lot="' + cEsc(x.lotId) + '">' +
     '<td class="cl-selcol"><input type="checkbox" class="cl-sel-chk"' + (sel ? ' checked' : '') + ' aria-label="Selecionar lote ' + cEsc(x.lotCode) + ' para impressão"></td>' +
-    '<td style="font-weight:700;">' + cEsc(x.lotCode) + (x.crop === 'SEMSAFRA' ? ' <span style="color:var(--texto2);font-weight:400;">(sem safra)</span>' : '') + '</td>' +
+    '<td style="font-weight:700;">' + cEsc(x.lotCode) + (x.crop === 'SEMSAFRA' ? ' <span style="color:var(--texto2);font-weight:400;">(sem safra)</span>' : '') +
+      (x._cultura && x._cultura !== 'Soja' ? ' <span style="color:var(--texto2);font-weight:500;font-size:0.8em;">· ' + cEsc(x._cultura) + '</span>' : '') + '</td>' +
     '<td>' + cEsc(x.cultivar || '—') + (x.cultivarNome ? ' <span style="color:var(--texto2);">' + cEsc(x.cultivarNome) + '</span>' : '') + '</td>' +
     '<td class="col-hide-mobile">' + cEsc(x.categoria || '—') + '</td>' +
     '<td class="col-hide-mobile">' + cEsc(x.peneira == null ? '—' : x.peneira) + '</td>' +
@@ -6292,7 +6301,7 @@ function marcarCardCentral() {
   });
 }
 function limparFiltrosCentral() {
-  ['central-search','central-safra','central-cultivar','central-situacao','central-qualidade','central-tsi','central-rastrel','central-div']
+  ['central-search','central-safra','central-cultura','central-cultivar','central-situacao','central-qualidade','central-tsi','central-rastrel','central-div']
     .forEach(id => { document.getElementById(id).value = ''; });
   document.getElementById('central-so-alerta').checked = false;
   document.getElementById('central-multi').checked = false;
@@ -6309,10 +6318,11 @@ function centralVista(v) {
   if (v === 'cultivar' && CENTRAL) renderResumoCultivar();
 }
 function renderResumoCultivar() {
-  const sf = document.getElementById('central-safra').value;
+  const sf = document.getElementById('central-safra').value, cu = document.getElementById('central-cultura').value;
   const grupos = {};
   CENTRAL.forEach(x => {
     if (sf && x.crop !== sf) return;
+    if (cu && x._cultura !== cu) return;
     const k = x.cultivar || '';
     const g = grupos[k] || (grupos[k] = { cv: k, nome: x.cultivarNome || '', total: 0, aprov: 0, sit: {}, d: 0, a: 0, p: 0 });
     g.total++; if (x.qualidadeStatus === 'APROVADO') g.aprov++;
@@ -6402,7 +6412,7 @@ function clSecoesLote(x) {
   const n = x._n;
   const meta = '<div class="cl-meta">' + kv('Cultivar', cEsc(x.cultivar || '—') + (x.cultivarNome ? ' <span style="color:var(--texto2);font-weight:500;">' + cEsc(x.cultivarNome) + '</span>' : '')) +
         kv('Categoria', cEsc(x.categoria || '—')) + kv('Peneira', cEsc(x.peneira == null ? '—' : x.peneira)) + kv('PMS', x.pms != null ? cNum(x.pms) + ' g' : '—') +
-        kv('Safra', cEsc(x.crop === 'SEMSAFRA' ? 'sem safra' : x.crop)) + kv('Última atualização', cEsc(x.lastUpdate || '—')) + '</div>' +
+        kv('Safra', cEsc(x.crop === 'SEMSAFRA' ? 'sem safra' : clSafraNome(x.crop))) + kv('Cultura', cEsc(x._cultura || '—')) + kv('Última atualização', cEsc(x.lastUpdate || '—')) + '</div>' +
       '<div style="font-size:0.84rem;color:var(--texto2);margin:-4px 0 12px;">' + cEsc(x.motivo || '') + '</div>';
   const contAl = (n.DIVERGENCIA ? '<span class="cl-niv cl-niv-D">' + n.DIVERGENCIA + '</span>' : '') + (n.AVISO ? '<span class="cl-niv cl-niv-A">' + n.AVISO + '</span>' : '') + (n.PENDENCIA ? '<span class="cl-niv cl-niv-P">' + n.PENDENCIA + '</span>' : '');
   return { badgeSit, meta, tl, alertas, contAl, secQ, secT, secR };
@@ -6457,7 +6467,7 @@ function imprimirSelecaoCentral() {
       const n = x._n;
       const al = (n.DIVERGENCIA ? '<span class="cl-niv cl-niv-D">' + n.DIVERGENCIA + '</span>' : '') + (n.AVISO ? '<span class="cl-niv cl-niv-A">' + n.AVISO + '</span>' : '') + (n.PENDENCIA ? '<span class="cl-niv cl-niv-P">' + n.PENDENCIA + '</span>' : '');
       return '<tr><td><b>' + cEsc(x.lotCode) + '</b></td><td>' + cEsc(x.cultivar || '—') + (x.cultivarNome ? ' <span style="color:#3a3a3a;">' + cEsc(x.cultivarNome) + '</span>' : '') + '</td>' +
-        '<td>' + cEsc(x.categoria || '—') + '</td><td>' + cEsc(x.peneira == null ? '—' : x.peneira) + '</td><td>' + cEsc(x.crop === 'SEMSAFRA' ? 'sem safra' : (x.crop || '—')) + '</td>' +
+        '<td>' + cEsc(x.categoria || '—') + '</td><td>' + cEsc(x.peneira == null ? '—' : x.peneira) + '</td><td>' + cEsc(x.crop === 'SEMSAFRA' ? 'sem safra' : (x.crop || '—')) + (x._cultura && x._cultura !== 'Soja' ? ' · ' + cEsc(x._cultura) : '') + '</td>' +
         '<td>' + qBadge(x) + '</td><td>' + cEsc(x.tsiStatus || '—') + '</td><td>' + cEsc(x.rastrelStatus || '—') + '</td>' +
         '<td><span class="rank-badge ' + (CENTRAL_SIT_CLASSE[x.situacao] || 'rank-X') + '">' + cEsc(x.situacao || '—') + '</span></td><td style="white-space:nowrap;">' + (al || '—') + '</td></tr>';
     }).join('') + '</tbody></table>';
@@ -6538,7 +6548,7 @@ async function irParaCentral(cfg) {
   irParaAba('central');
   if (!(await garantirCentral())) return;
   centralVista('lotes');
-  ['central-search','central-safra','central-cultivar','central-situacao','central-qualidade','central-tsi','central-rastrel','central-div']
+  ['central-search','central-safra','central-cultura','central-cultivar','central-situacao','central-qualidade','central-tsi','central-rastrel','central-div']
     .forEach(id => { document.getElementById(id).value = ''; });
   document.getElementById('central-so-alerta').checked = !!cfg.soAlerta;
   document.getElementById('central-multi').checked = false;
