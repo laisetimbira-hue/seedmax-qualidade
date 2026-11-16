@@ -1185,6 +1185,11 @@ html {
   firebase.initializeApp(SEEDMAX_FIREBASE_CONFIG);
   const smAuth = firebase.auth();
   const smDb   = firebase.firestore();
+  // Conexão compatível com redes/navegadores que bloqueiam o canal padrão
+  // (ex.: iPhone/Safari com bloqueador, VPN, proxy): o SDK detecta e usa
+  // long polling. No SDK 10.x isto já é o padrão; fica explícito de propósito.
+  // Precisa vir antes de qualquer leitura e antes do useEmulator.
+  try { smDb.settings({ experimentalAutoDetectLongPolling: true, merge: true }); } catch (e) {}
 
   // Teste local (emulador do Firebase): só quando aberto em localhost.
   if (['localhost', '127.0.0.1'].includes(location.hostname) && /[?&]emulador=1\b/.test(location.search)) {
@@ -1216,6 +1221,51 @@ html {
 
   function smFormulario(ativo) {
     smEl('login-form').style.display = ativo ? '' : 'none';
+  }
+
+  // Falha ao ler o cadastro (rede/conexão): mostra aviso + "Tentar novamente"
+  // sem encerrar a sessão. msg = null esconde o aviso.
+  // O aviso é criado aqui (logo abaixo de #login-status), copiando o estilo do
+  // erro e do botão da tela de login que estiver em uso — assim funciona com
+  // qualquer versão da tela de login.
+  function smFalhaLeitura(msg) {
+    let box = smEl('login-falha');
+    if (!box) {
+      if (!msg) return;
+      const ref = smEl('login-status');
+      const erro = smEl('login-error');
+      const btnLogin = document.querySelector('#login-form button[onclick^="doLogin"]');
+      box = document.createElement('div');
+      box.id = 'login-falha';
+      const m = document.createElement('div');
+      m.id = 'login-falha-msg';
+      m.setAttribute('role', 'alert');
+      m.className = erro ? erro.className : '';
+      m.style.display = 'block';
+      const b1 = document.createElement('button');
+      b1.type = 'button';
+      b1.className = btnLogin ? btnLogin.className : '';
+      b1.textContent = 'Tentar novamente';
+      b1.onclick = smTentarDeNovo;
+      const b2 = document.createElement('button');
+      b2.type = 'button';
+      b2.className = b1.className;
+      b2.textContent = 'Entrar com outra conta';
+      b2.style.cssText = 'margin-top:8px;background:transparent;color:#8094ad;border:1px solid #26364f';
+      b2.onclick = () => smSair();
+      box.append(m, b1, b2);
+      if (ref && ref.parentNode) ref.parentNode.insertBefore(box, ref.nextSibling);
+      else document.body.appendChild(box);
+    }
+    smEl('login-falha-msg').textContent = msg || '';
+    box.style.display = msg ? '' : 'none';
+  }
+
+  function smTentarDeNovo() {
+    const user = smAuth.currentUser;
+    smFalhaLeitura(null);
+    if (user && !smAppIniciado) smEntrarNoSistema(user);
+    else location.reload();
   }
 
   function doLogin() {
@@ -1355,13 +1405,32 @@ html {
 
   async function smEntrarNoSistema(user) {
     smFormulario(false);
+    smFalhaLeitura(null);
     smStatus('Verificando permissão…');
-    let perfil;
-    try {
-      const snap = await smDb.collection('users').doc(user.uid).get();
-      perfil = snap.exists ? snap.data() : null;
-    } catch (e) {
-      perfil = null;
+    // Lê o cadastro users/{uid}. Separa dois casos:
+    //  - permissão (documento ausente, inativo ou regra negou) → "sem acesso", como antes;
+    //  - falha de leitura (rede, conexão, cache, servidor) → NÃO diz "sem acesso",
+    //    mantém a sessão (login persistente) e oferece "Tentar novamente".
+    let perfil = null;
+    let erroLeitura = null;
+    for (let tentativa = 0; tentativa < 3; tentativa++) {
+      try {
+        const snap = await smDb.collection('users').doc(user.uid).get();
+        perfil = snap.exists ? snap.data() : null;
+        erroLeitura = null;
+        break;
+      } catch (e) {
+        const codigo = (e && e.code) || 'desconhecido';
+        console.warn('[SEEDMAX] falha ao ler users/{uid} (tentativa ' + (tentativa + 1) + '/3):', codigo, e && e.message);
+        if (codigo === 'permission-denied') { perfil = null; erroLeitura = null; break; }
+        erroLeitura = codigo;
+        if (tentativa < 2) await new Promise(r => setTimeout(r, 1500));
+      }
+    }
+    if (erroLeitura) {
+      smStatus('');
+      smFalhaLeitura('Não foi possível verificar sua permissão no SEEDMAX. Verifique sua conexão e tente novamente. (código: ' + erroLeitura + ')');
+      return;
     }
     if (!perfil || perfil.active !== true) {
       await smAuth.signOut();
@@ -1426,6 +1495,7 @@ html {
       location.replace(location.pathname);
     } else {
       smStatus('');
+      smFalhaLeitura(null);
       smFormulario(true);
       setTimeout(() => smEl('email-input').focus(), 50);
     }
