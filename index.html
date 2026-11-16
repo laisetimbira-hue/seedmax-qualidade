@@ -1124,11 +1124,6 @@ html {
     <span class="sml-chip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>ACESSO RESTRITO</span>
     <div class="sml-sub">Análise de Sementes — Verão e Inverno</div>
     <div class="sml-erro" id="login-status" style="display:none;color:#8094ad;background:transparent;border-color:#26364f" role="status"></div>
-    <div id="login-falha" style="display:none">
-      <div class="sml-erro" id="login-falha-msg" role="alert" style="display:block"></div>
-      <button class="sml-btn" type="button" onclick="smTentarDeNovo()">Tentar novamente</button>
-      <button class="sml-btn" type="button" onclick="smSair()" style="margin-top:8px;background:transparent;color:#8094ad;border:1px solid #26364f">Entrar com outra conta</button>
-    </div>
     <div id="login-form">
     <label class="sml-label" for="email-input">E-mail</label>
     <div class="sml-campo">
@@ -1194,7 +1189,7 @@ html {
   // (ex.: iPhone/Safari com bloqueador, VPN, proxy): o SDK detecta e usa
   // long polling. No SDK 10.x isto já é o padrão; fica explícito de propósito.
   // Precisa vir antes de qualquer leitura e antes do useEmulator.
-  try { smDb.settings({ experimentalAutoDetectLongPolling: true }); } catch (e) {}
+  try { smDb.settings({ experimentalAutoDetectLongPolling: true, merge: true }); } catch (e) {}
 
   // Teste local (emulador do Firebase): só quando aberto em localhost.
   if (['localhost', '127.0.0.1'].includes(location.hostname) && /[?&]emulador=1\b/.test(location.search)) {
@@ -1230,9 +1225,38 @@ html {
 
   // Falha ao ler o cadastro (rede/conexão): mostra aviso + "Tentar novamente"
   // sem encerrar a sessão. msg = null esconde o aviso.
+  // O aviso é criado aqui (logo abaixo de #login-status), copiando o estilo do
+  // erro e do botão da tela de login que estiver em uso — assim funciona com
+  // qualquer versão da tela de login.
   function smFalhaLeitura(msg) {
-    const box = smEl('login-falha');
-    if (!box) return;
+    let box = smEl('login-falha');
+    if (!box) {
+      if (!msg) return;
+      const ref = smEl('login-status');
+      const erro = smEl('login-error');
+      const btnLogin = document.querySelector('#login-form button[onclick^="doLogin"]');
+      box = document.createElement('div');
+      box.id = 'login-falha';
+      const m = document.createElement('div');
+      m.id = 'login-falha-msg';
+      m.setAttribute('role', 'alert');
+      m.className = erro ? erro.className : '';
+      m.style.display = 'block';
+      const b1 = document.createElement('button');
+      b1.type = 'button';
+      b1.className = btnLogin ? btnLogin.className : '';
+      b1.textContent = 'Tentar novamente';
+      b1.onclick = smTentarDeNovo;
+      const b2 = document.createElement('button');
+      b2.type = 'button';
+      b2.className = b1.className;
+      b2.textContent = 'Entrar com outra conta';
+      b2.style.cssText = 'margin-top:8px;background:transparent;color:#8094ad;border:1px solid #26364f';
+      b2.onclick = () => smSair();
+      box.append(m, b1, b2);
+      if (ref && ref.parentNode) ref.parentNode.insertBefore(box, ref.nextSibling);
+      else document.body.appendChild(box);
+    }
     smEl('login-falha-msg').textContent = msg || '';
     box.style.display = msg ? '' : 'none';
   }
