@@ -165,8 +165,8 @@ def cultura_de_leitura(cultura, safra):
 def montar_id_lote(safra, cultura, lote):
     """Identificador estável do lote: SAFRA + CULTURA + LOTE.
       Verão (SOJA…)  → SOJA2526_26S133C          (ID histórico preservado)
-      Inverno        → INV2626_TRIGO_27AB001
-      Inverno sem cultura informada → INV2626_SEMCULTURA_27AB001"""
+      Inverno        → INV2626_TRIGO_99QQ001
+      Inverno sem cultura informada → INV2626_SEMCULTURA_99QQ001"""
     code = codigo_lote(lote)
     seguro = re.sub(r"[^A-Za-z0-9_-]+", "-", code).strip("-")
     if not seguro:
@@ -547,6 +547,39 @@ def _etapas(q, t, r, tsi_conectado, rastrel_conectado):
     return {"qualidade": eq, "tsi": et, "rastrel": er, "expedicao": ee}
 
 
+def vincular_beneficiamento_inverno(qualidade, benef_inverno):
+    """Liga cada lote de BENEF_INVERNO ao lote JÁ EXISTENTE da Qualidade com a
+    MESMA identidade INV2626_<CULTURA>_<LOTE>. Nunca cria lote novo nem lotId
+    novo: beneficiamento é informação do lote, não identidade.
+    Devolve (vinculados, sem_lote) — sem_lote = lotIds do beneficiamento que
+    ainda não existem na Qualidade (ficam fora da Central, só no relatório)."""
+    vinculados, sem_lote = [], []
+    for c in benef_inverno or []:
+        for d in c.get("detail") or []:
+            code = codigo_lote(d.get("lote"))
+            if not code:
+                continue
+            cultura = cultura_de_leitura(d.get("cultura") or c.get("cultura"), SAFRA_INVERNO)
+            lid = montar_id_lote(SAFRA_INVERNO, cultura, code)
+            if d.get("lotId") and d["lotId"] != lid:
+                raise SystemExit(f"ERRO: BENEF_INVERNO traz lotId {d['lotId']} diferente da regra ({lid})")
+            alvo = qualidade.get(lid)
+            if alvo is None:
+                sem_lote.append(lid)
+                continue
+            b = alvo.setdefault("beneficiamento", {"bags": 0, "kg": 0, "localizacoes": [], "observacoes": []})
+            b["bags"] += _num(d.get("bags")) or 0
+            b["kg"] += _num(d.get("kg")) or 0
+            for campo, chave in (("localizacoes", "localizacao"), ("observacoes", "observacoes")):
+                if d.get(chave) and d[chave] not in b[campo]:
+                    b[campo].append(d[chave])
+            b["embalagem"] = d.get("embalagem")
+            b["categoria"] = d.get("categoria")
+            b["peneira"] = d.get("peneira")
+            vinculados.append(lid)
+    return sorted(set(vinculados)), sorted(set(sem_lote))
+
+
 def consolidar(qualidade, tsi, rastrel, apelidos, carimbo,
                tsi_conectado=True, rastrel_conectado=True, safra=SAFRA_ATIVA, nomes=None, codigos_cv=None):
     """Junta os três resumos pela identidade SAFRA+CULTURA+LOTE → {lotId: documento}.
@@ -771,6 +804,9 @@ def consolidar(qualidade, tsi, rastrel, apelidos, carimbo,
             "etapas": etapas,
             "presente": True,
         }
+        if q and q.get("beneficiamento"):
+            # Beneficiamento do Inverno vinculado ao MESMO lote (não é identidade nova)
+            doc["beneficiamento"] = q["beneficiamento"]
         if doc["cultivar"] and not base.get("cultivar"):
             # cultivar veio do TSI/RASTREL ('Zeus', '56IX58RSF I2X (TITANIUM)'): usa o código da Qualidade,
             # para o filtro e o resumo por cultivar juntarem o mesmo material
@@ -956,6 +992,10 @@ def sincronizar(simular=False):
     cv_meta = dict(dados.get("CV_META_INVERNO") or {}, **(dados.get("CV_META") or {}))
     apelidos = montar_apelidos(cv_meta)
     q = resumir_qualidade(dados)
+    vinc, sem_lote = vincular_beneficiamento_inverno(q, dados.get("BENEF_INVERNO"))
+    print(f"Beneficiamento Inverno: {len(vinc)} lotes vinculados a lotes existentes"
+          + (f" · {len(sem_lote)} ainda sem lote na Qualidade (não entram na Central): "
+             + ", ".join(sem_lote[:30]) if sem_lote else ""))
     por_safra = {}
     for x in q.values():
         k = x["safra"] + ("/" + x["cultura"] if not x["safra"].startswith("SOJA") else "")

@@ -1,32 +1,34 @@
 """
-SEEDMAX — leitura da planilha "LOTES BENEFICIADOS INVERNO 26-26.xlsx".
+SEEDMAX — Beneficiamento de Inverno: leitura da planilha e consolidação.
 
-Só interpreta a planilha e devolve o conjunto BENEF_INVERNO (lista de
-cultivares, cada um com os seus lotes). Não grava nada: quem grava é o
-sincronizador (scripts/sincronizar_benef_inverno.py).
+Duas etapas, ambas sem gravar nada:
 
-Estrutura esperada (a mesma em todas as abas, ex.: "INVERNO 2026", "PGW"):
+  1. ler_planilha(arquivo) -> linhas brutas (uma por linha de lote do Excel)
+  2. consolidar(linhas, culturas) -> (BENEF_INVERNO, conflitos, avisos)
 
-  DATA | CULTIVAR | SAFRA | CAT. | LOTE | PEN. | EMBALAGEM | N° BB | PESO |
-  Total | Localização | Observações
+A MESMA consolidação existe em JavaScript na função segura da ponte
+(ponte/benef-inverno.js), que é quem decide de verdade antes de gravar. Os
+dois lados são conferidos pelos mesmos casos em tests/casos_benef_inverno.json.
 
-As colunas são achadas pelo texto do cabeçalho (não pela posição), porque
-na planilha de verão as colunas já mudaram de lugar várias vezes sem aviso.
-Linhas de totalização ("N° BAGS / FINALIZADO" etc.) não são lotes e são
-ignoradas: uma linha só vira lote se tiver CULTIVAR, LOTE e N° BB > 0.
+IDENTIDADE DO LOTE (regra única do SEEDMAX): Safra + Cultura + Lote,
+INV2626_<CULTURA>_<LOTE> — central_lotes.montar_id_lote. O beneficiamento é
+informação VINCULADA a esse lote; nunca cria identidade nova.
 
-Formato de cada item de BENEF_INVERNO:
+  * mesma cultura + mesmo lote = o mesmo lote (uma entrada só);
+  * mesmo número de lote em culturas diferentes = lotes diferentes;
+  * linha repetida idêntica (todos os campos iguais) = a mesma linha digitada
+    duas vezes: entra uma vez só (aviso no log);
+  * linhas do mesmo lote com cultivar, categoria, peneira, embalagem e peso
+    por bag iguais, mas quantidades diferentes = continuação do lote: soma
+    bags e kg, na ordem aba/linha (determinístico);
+  * cultivar, categoria, peneira, embalagem ou peso por bag diferentes entre
+    linhas do mesmo lote, Total ≠ N° BB × PESO, ou cultura desconhecida =
+    CONFLITO: a sincronização para e nada é publicado.
 
-  {"cultivar": "PGA0155", "cultura": "Trigo" | None,
-   "bags_total": 188, "kg_total": 112800, "lotes": 10,
-   "localizacoes": ["UBS SCV"], "abas": ["INVERNO 2026"],
-   "detail": [{"lote", "lotId", "data", "safra", "categoria", "peneira",
-               "embalagem", "bags", "peso_bag", "kg", "localizacao",
-               "observacoes", "aba", "linha"}]}
-
-"cultura" vem do cadastro CV_META_INVERNO (pelo cultivar). Se o cultivar
-não estiver cadastrado, usa a cultura escrita na própria planilha, quando
-houver (ex.: "AVEIA BRANCA / IMPACTA"); senão fica None.
+Planilha: todas as abas visíveis; colunas achadas pelo texto do cabeçalho
+(DATA, CULTIVAR, SAFRA, CAT., LOTE, PEN., EMBALAGEM, N° BB, PESO, Total,
+Localização, Observações). Linhas de totalização ("N° BAGS / FINALIZADO")
+não são lotes: só conta a linha com LOTE e N° BB > 0.
 """
 
 import re
@@ -34,11 +36,12 @@ import unicodedata
 from collections import OrderedDict
 from datetime import date, datetime
 
-import openpyxl
+import central_lotes  # só biblioteca padrão; aqui só para a regra do lotId
 
-SAFRA_INVERNO = "INV2626"
+SAFRA_INVERNO = central_lotes.SAFRA_INVERNO      # "INV2626"
+FORMATO = 1
+TOLERANCIA_KG = 0.5
 
-# rótulo normalizado do cabeçalho -> campo
 CABECALHOS = {
     "data": ["DATA"],
     "cultivar": ["CULTIVAR"],
@@ -55,18 +58,28 @@ CABECALHOS = {
 }
 OBRIGATORIOS = ("cultivar", "lote", "bags")
 
-# Culturas conhecidas do Inverno (mesmos nomes do CV_META_INVERNO). Servem
-# só para reconhecer a cultura quando ela vem escrita junto do cultivar,
-# como em "AVEIA BRANCA / IMPACTA".
+# culturas do Inverno (mesmos nomes do CV_META_INVERNO), para reconhecer a
+# cultura escrita junto do cultivar, ex.: "AVEIA BRANCA - CULTIVAR X"
 CULTURAS = ["Trigo Mourisco", "Trigo", "Aveia Branca", "Aveia Preta", "Cevada",
             "Nabo", "Ervilhaca", "Ervilha", "Centeio", "Azevém", "Triticale"]
 
+# campos que precisam ser iguais em todas as linhas do mesmo lote
+CAMPOS_DO_LOTE = ("cultivar", "categoria", "peneira", "embalagem", "peso_bag")
+# campos que, todos iguais, indicam a mesma linha digitada duas vezes
+CAMPOS_DA_LINHA = ("cultivar", "categoria", "peneira", "embalagem", "bags", "peso_bag",
+                   "kg", "localizacao", "observacoes", "data", "safra")
+
+
+# ---------------------------------------------------------------- utilitários
 
 def _norm(txt):
-    """Maiúsculas, sem acento, sem pontuação, espaços simples."""
     t = unicodedata.normalize("NFKD", str(txt or "")).encode("ascii", "ignore").decode()
-    t = re.sub(r"[^A-Za-z0-9]+", " ", t).strip().upper()
-    return t
+    return re.sub(r"[^A-Za-z0-9]+", " ", t).strip().upper()
+
+
+def _cmp(v):
+    """Valor para comparar: texto normalizado (sem acento/caixa/espaço extra)."""
+    return _norm(v) if isinstance(v, str) else v
 
 
 def _num(v):
@@ -78,9 +91,9 @@ def _num(v):
     if not s or s.startswith("="):
         return None
     s = re.sub(r"[^0-9,.\-]", "", s)
-    if s.count(",") == 1 and s.count(".") >= 1:      # 1.234,5
+    if s.count(",") == 1 and s.count(".") >= 1:
         s = s.replace(".", "").replace(",", ".")
-    elif s.count(",") == 1:                           # 600,5
+    elif s.count(",") == 1:
         s = s.replace(",", ".")
     try:
         return float(s)
@@ -103,34 +116,33 @@ def _data(v):
     return _txt(v)
 
 
-def _int_ou_float(x):
+def _n(x):
+    """Número limpo: inteiro quando for inteiro."""
     if x is None:
         return None
     return int(round(x)) if abs(x - round(x)) < 1e-6 else round(x, 2)
 
 
-def montar_lot_id(cultura, lote):
-    """Mesma regra única da Central de Lotes / TSI / RASTREL:
-    INV2626_<CULTURA>_<LOTE> (sem cultura → INV2626_SEMCULTURA_<LOTE>)."""
-    import central_lotes  # só biblioteca padrão; não conecta em nada
-    return central_lotes.montar_id_lote(SAFRA_INVERNO, cultura or "", lote)
-
-
-def separar_cultura(cultivar_txt):
-    """'AVEIA BRANCA / IMPACTA' -> ('Aveia Branca', 'IMPACTA').
-    Sem cultura reconhecida, devolve (None, texto original)."""
-    s = _txt(cultivar_txt) or ""
+def separar_cultura(texto):
+    """'AVEIA BRANCA - CULTIVAR X' -> ("Aveia Branca", "CULTIVAR X")."""
+    s = _txt(texto) or ""
     n = _norm(s)
     for cult in CULTURAS:
         cn = _norm(cult)
         if n == cn:
             return cult, s
         if n.startswith(cn + " "):
-            resto = re.split(r"\s*[/\-–|:]\s*", s, maxsplit=1)
-            cv = resto[1].strip() if len(resto) == 2 and resto[1].strip() else s[len(cult):].strip(" /-–|:")
+            partes = re.split(r"\s*[/\-–|:]\s*", s, maxsplit=1)
+            cv = partes[1].strip() if len(partes) == 2 and partes[1].strip() else s[len(cult):].strip(" /-–|:")
             return cult, (cv or s)
     return None, s
 
+
+def montar_lot_id(cultura, lote):
+    return central_lotes.montar_id_lote(SAFRA_INVERNO, cultura or "", lote)
+
+
+# ---------------------------------------------------------------- 1. planilha
 
 def _achar_cabecalho(ws, max_linhas=15):
     for r in range(1, min(ws.max_row, max_linhas) + 1):
@@ -152,9 +164,11 @@ def _achar_cabecalho(ws, max_linhas=15):
     return None
 
 
-def ler_planilha(caminho_ou_buf):
-    """Lê todas as abas e devolve (linhas, avisos). Cada linha é um lote."""
-    wb = openpyxl.load_workbook(caminho_ou_buf, data_only=True, read_only=False)
+def ler_planilha(arquivo):
+    """Devolve (linhas, avisos). Cada linha = uma linha de lote do Excel,
+    sem consolidar nada (é isto que vai para a função segura)."""
+    import openpyxl
+    wb = openpyxl.load_workbook(arquivo, data_only=True)
     linhas, avisos = [], []
     for ws in wb.worksheets:
         if ws.sheet_state != "visible":
@@ -164,105 +178,177 @@ def ler_planilha(caminho_ou_buf):
             avisos.append(f"aba '{ws.title}': cabeçalho (CULTIVAR / LOTE / N° BB) não encontrado — ignorada")
             continue
         r_cab, cols = achado
-        # título da aba (linhas acima do cabeçalho), ex.: "AVEIA BRANCA - IMPACTA"
         titulo = " ".join(_txt(ws.cell(r, c).value) or "" for r in range(1, r_cab)
                           for c in range(1, ws.max_column + 1)).strip()
         cultura_titulo, cv_titulo = separar_cultura(titulo) if titulo else (None, None)
-        ultimo_cultivar = None
+        ultimo_cv = None
         for r in range(r_cab + 1, ws.max_row + 1):
             g = lambda campo: ws.cell(r, cols[campo]).value if campo in cols else None
-            cv_raw, lote, bags = _txt(g("cultivar")), _txt(g("lote")), _num(g("bags"))
+            lote, bags = _txt(g("lote")), _num(g("bags"))
             if not lote or not bags or bags <= 0:
-                continue                      # vazio, totalização, rodapé
+                continue                                  # vazio, totalização, rodapé
             if _norm(lote) in ("LOTE", "TOTAL", "FINALIZADO") or "BAGS" in _norm(lote):
                 continue
+            cv_raw = _txt(g("cultivar")) or ultimo_cv     # célula mesclada/repetida
             if not cv_raw:
-                # célula de cultivar mesclada/repetida só na primeira linha
-                cv_raw = ultimo_cultivar
-                if not cv_raw:
-                    avisos.append(f"aba '{ws.title}' linha {r}: lote {lote} sem cultivar — ignorado")
-                    continue
-            ultimo_cultivar = cv_raw
-            if _norm(cv_raw) in ("CULTIVAR", "TOTAL") or "FINALIZADO" in _norm(cv_raw):
+                avisos.append(f"aba '{ws.title}' linha {r}: lote {lote} sem cultivar — ignorado")
                 continue
-
+            ultimo_cv = cv_raw
             cultura_planilha, cultivar = separar_cultura(cv_raw)
             if not cultura_planilha and cultura_titulo and _norm(cultivar) in _norm(cv_titulo or ""):
                 cultura_planilha = cultura_titulo
-            peso = _num(g("peso"))
-            total = _num(g("total"))
-            kg = total if total and total > 0 else (bags * peso if peso else None)
-            if total and peso and abs(total - bags * peso) > 0.5:
-                avisos.append(f"aba '{ws.title}' linha {r}: lote {lote} — Total ({total:g}) "
-                              f"diferente de N° BB × PESO ({bags:g} × {peso:g}); usado o Total da planilha")
-            if kg is None:
-                avisos.append(f"aba '{ws.title}' linha {r}: lote {lote} sem PESO/Total — volume 0")
             linhas.append({
                 "aba": ws.title, "linha": r,
                 "cultivar": cultivar, "cultura_planilha": cultura_planilha,
                 "data": _data(g("data")), "safra": _txt(g("safra")),
                 "categoria": _txt(g("categoria")), "lote": lote,
                 "peneira": _txt(g("peneira")), "embalagem": _txt(g("embalagem")),
-                "bags": _int_ou_float(bags), "peso_bag": _int_ou_float(peso),
-                "kg": _int_ou_float(kg or 0),
+                "bags": _n(bags), "peso_bag": _n(_num(g("peso"))), "total_kg": _n(_num(g("total"))),
                 "localizacao": _txt(g("localizacao")), "observacoes": _txt(g("observacoes")),
             })
     return linhas, avisos
 
 
-def _cultura_cadastrada(cultivar, cv_meta):
-    if not cv_meta:
+# ---------------------------------------------------------------- 2. consolidação
+
+def cultura_do_cultivar(cultivar, culturas):
+    """Cultura pelo cadastro CV_META_INVERNO ({cultivar: {cultura}} ou {cultivar: cultura})."""
+    if not culturas:
         return None
-    m = cv_meta.get(cultivar)
-    if m is None:
-        alvo = _norm(cultivar)
-        m = next((v for k, v in cv_meta.items() if _norm(k) == alvo), None)
-    return (m or {}).get("cultura") or None
+    alvo = _norm(cultivar)
+    for k in sorted(culturas):
+        if _norm(k) == alvo:
+            v = culturas[k]
+            return (v.get("cultura") if isinstance(v, dict) else v) or None
+    return None
 
 
-def montar_benef_inverno(linhas, cv_meta_inverno=None):
-    """Agrupa os lotes por cultivar no formato BENEF_INVERNO."""
-    grupos = OrderedDict()
+def _kg_da_linha(l):
+    """(kg, problema). Total da planilha; se vazio, N° BB × PESO."""
+    bags, peso, total = l.get("bags"), l.get("peso_bag"), l.get("total_kg")
+    if total is not None and peso is not None and abs(total - bags * peso) > TOLERANCIA_KG:
+        return None, f"Total {_n(total)} kg diferente de N° BB × PESO ({_n(bags)} × {_n(peso)} = {_n(bags * peso)} kg)"
+    if total is not None:
+        return total, None
+    if peso is not None:
+        return bags * peso, None
+    return None, "sem PESO e sem Total"
+
+
+def _onde(l):
+    return f"aba '{l.get('aba')}' linha {l.get('linha')}"
+
+
+def consolidar(linhas, culturas=None):
+    """Linhas brutas -> (BENEF_INVERNO, conflitos, avisos).
+    Com qualquer conflito, BENEF_INVERNO volta vazio e NÃO deve ser publicado."""
+    conflitos, avisos = [], []
+    pos_aba = {}
     for l in linhas:
-        g = grupos.setdefault(l["cultivar"], {"cultivar": l["cultivar"], "culturas_planilha": [], "detail": []})
-        if l["cultura_planilha"] and l["cultura_planilha"] not in g["culturas_planilha"]:
-            g["culturas_planilha"].append(l["cultura_planilha"])
-        g["detail"].append(l)
+        pos_aba.setdefault(l.get("aba"), len(pos_aba))
+    ordem = sorted(range(len(linhas)),
+                   key=lambda i: (pos_aba[linhas[i].get("aba")], int(linhas[i].get("linha") or 0), i))
 
-    saida = []
-    for cv, g in grupos.items():
-        cultura = _cultura_cadastrada(cv, cv_meta_inverno) or (g["culturas_planilha"][0] if g["culturas_planilha"] else None)
-        detail = []
-        for l in g["detail"]:
-            d = {k: l[k] for k in ("lote", "data", "safra", "categoria", "peneira", "embalagem",
-                                   "bags", "peso_bag", "kg", "localizacao", "observacoes", "aba", "linha")}
-            d["lotId"] = montar_lot_id(cultura, l["lote"])
-            detail.append(d)
-        locs = list(OrderedDict.fromkeys(d["localizacao"] for d in detail if d["localizacao"]))
-        abas = list(OrderedDict.fromkeys(d["aba"] for d in detail))
-        saida.append({
+    grupos = OrderedDict()                                  # lotId -> [linhas]
+    for i in ordem:
+        l = dict(linhas[i])
+        codigo = central_lotes.codigo_lote(l.get("lote"))
+        if not codigo:
+            conflitos.append({"tipo": "lote_invalido", "lote": l.get("lote"), "onde": [_onde(l)],
+                              "texto": "código de lote vazio ou inválido"})
+            continue
+        cultura = cultura_do_cultivar(l.get("cultivar"), culturas) or l.get("cultura_planilha")
+        if not cultura:
+            conflitos.append({"tipo": "sem_cultura", "lote": codigo, "onde": [_onde(l)],
+                              "texto": f"cultivar {l.get('cultivar')} sem cultura no CV_META_INVERNO nem na "
+                                       "planilha — não dá para montar a identidade do lote"})
+            continue
+        kg, problema = _kg_da_linha(l)
+        if problema:
+            conflitos.append({"tipo": "quantidade_incompativel", "lote": codigo, "onde": [_onde(l)],
+                              "texto": problema})
+            continue
+        l.update(cultura=cultura, kg=_n(kg), codigo=codigo, lotId=montar_lot_id(cultura, codigo))
+        grupos.setdefault(l["lotId"], []).append(l)
+
+    lotes = []
+    for lot_id, ls in grupos.items():
+        # (1) linha idêntica repetida = digitada duas vezes: conta uma vez
+        unicas, vistas = [], set()
+        for l in ls:
+            chave = tuple(_cmp(l.get(c)) for c in CAMPOS_DA_LINHA)
+            if chave in vistas:
+                avisos.append(f"lote {l['codigo']}: {_onde(l)} repete exatamente outra linha — contada uma vez")
+                continue
+            vistas.add(chave)
+            unicas.append(l)
+        # (2) dados do lote precisam ser os mesmos em todas as linhas
+        conflito = False
+        for campo in CAMPOS_DO_LOTE:
+            vals = OrderedDict()
+            for l in unicas:
+                vals.setdefault(_cmp(l.get(campo)), (l.get(campo), []))[1].append(_onde(l))
+            if len(vals) > 1:
+                conflito = True
+                conflitos.append({
+                    "tipo": f"{campo}_divergente", "lote": unicas[0]["codigo"], "lotId": lot_id,
+                    "onde": [o for _, os_ in vals.values() for o in os_],
+                    "texto": f"{campo} diferente entre linhas do mesmo lote: "
+                             + " × ".join(str(v) for v, _ in vals.values())})
+        if conflito:
+            continue
+        # (3) continuação do mesmo lote: soma, na ordem aba/linha
+        b = unicas[0]
+        if len(unicas) > 1:
+            avisos.append(f"lote {b['codigo']}: {len(unicas)} linhas do mesmo lote somadas "
+                          f"({', '.join(_onde(l) for l in unicas)})")
+
+        def juntar(campo):
+            return " · ".join(OrderedDict.fromkeys(l[campo] for l in unicas if l.get(campo))) or None
+
+        lotes.append({
+            "lotId": lot_id, "lote": b["codigo"], "cultivar": b["cultivar"], "cultura": b["cultura"],
+            "data": juntar("data"), "safra": juntar("safra"), "categoria": b.get("categoria"),
+            "peneira": b.get("peneira"), "embalagem": b.get("embalagem"),
+            "bags": _n(sum(l["bags"] for l in unicas)), "peso_bag": b.get("peso_bag"),
+            "kg": _n(sum(l["kg"] for l in unicas)),
+            "localizacao": juntar("localizacao"), "observacoes": juntar("observacoes"),
+            "linhas": [{"aba": l.get("aba"), "linha": l.get("linha")} for l in unicas],
+        })
+
+    if conflitos:
+        return [], conflitos, avisos
+
+    # (4) agrupa por cultivar, na ordem em que aparecem
+    por_cv = OrderedDict()
+    for d in lotes:
+        por_cv.setdefault((d["cultivar"], d["cultura"]), []).append(d)
+    benef = []
+    for (cv, cultura), ds in por_cv.items():
+        benef.append({
             "cultivar": cv,
             "cultura": cultura,
-            "bags_total": _int_ou_float(sum(d["bags"] for d in detail)),
-            "kg_total": _int_ou_float(sum(d["kg"] or 0 for d in detail)),
-            "lotes": len({d["lote"] for d in detail}),
-            "localizacoes": locs,
-            "abas": abas,
-            "detail": detail,
+            "bags_total": _n(sum(d["bags"] for d in ds)),
+            "kg_total": _n(sum(d["kg"] for d in ds)),
+            "lotes": len(ds),
+            "localizacoes": list(OrderedDict.fromkeys(d["localizacao"] for d in ds if d["localizacao"])),
+            "abas": list(OrderedDict.fromkeys(x["aba"] for d in ds for x in d["linhas"])),
+            "detail": ds,
         })
-    return saida
+    return benef, [], avisos
 
 
 def totais(benef):
     return {
         "cultivares": len(benef),
         "lotes": sum(c["lotes"] for c in benef),
-        "bags": _int_ou_float(sum(c["bags_total"] for c in benef)),
-        "kg": _int_ou_float(sum(c["kg_total"] for c in benef)),
+        "bags": _n(sum(c["bags_total"] for c in benef)),
+        "kg": _n(sum(c["kg_total"] for c in benef)),
     }
 
 
-def ler(caminho_ou_buf, cv_meta_inverno=None):
-    """Atalho: planilha -> (BENEF_INVERNO, avisos)."""
-    linhas, avisos = ler_planilha(caminho_ou_buf)
-    return montar_benef_inverno(linhas, cv_meta_inverno), avisos
+def ler(arquivo, culturas=None):
+    """Atalho: planilha -> (BENEF_INVERNO, conflitos, avisos)."""
+    linhas, avisos = ler_planilha(arquivo)
+    benef, conflitos, av2 = consolidar(linhas, culturas)
+    return benef, conflitos, avisos + av2

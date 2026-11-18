@@ -1,0 +1,608 @@
+[
+ {
+  "nome": "normal: dois lotes, um cultivar",
+  "culturas": {
+   "CVA": {
+    "cultura": "Aveia Branca"
+   },
+   "CVB": {
+    "cultura": "Aveia Branca"
+   },
+   "CVT": {
+    "cultura": "Trigo"
+   }
+  },
+  "linhas": [
+   {
+    "aba": "A",
+    "linha": 3,
+    "cultivar": "CVA",
+    "cultura_planilha": null,
+    "data": null,
+    "safra": "26/26",
+    "categoria": "S2",
+    "lote": "99QQ01",
+    "peneira": "S/P",
+    "embalagem": "BB600",
+    "bags": 20,
+    "peso_bag": 600,
+    "total_kg": 12000,
+    "localizacao": "UBS X",
+    "observacoes": null
+   },
+   {
+    "aba": "A",
+    "linha": 4,
+    "cultivar": "CVA",
+    "cultura_planilha": null,
+    "data": null,
+    "safra": "26/26",
+    "categoria": "S2",
+    "lote": "99QQ02",
+    "peneira": "S/P",
+    "embalagem": "BB600",
+    "bags": 8,
+    "peso_bag": 600,
+    "total_kg": 4800,
+    "localizacao": "UBS X",
+    "observacoes": null
+   }
+  ],
+  "espera": {
+   "lotIds": [
+    "INV2626_AVEIA_BRANCA_99QQ01",
+    "INV2626_AVEIA_BRANCA_99QQ02"
+   ],
+   "bags": 28,
+   "kg": 16800,
+   "conflitos": []
+  }
+ },
+ {
+  "nome": "mesma linha repetida duas vezes no Excel nao duplica",
+  "culturas": {
+   "CVA": {
+    "cultura": "Aveia Branca"
+   },
+   "CVB": {
+    "cultura": "Aveia Branca"
+   },
+   "CVT": {
+    "cultura": "Trigo"
+   }
+  },
+  "linhas": [
+   {
+    "aba": "A",
+    "linha": 3,
+    "cultivar": "CVA",
+    "cultura_planilha": null,
+    "data": null,
+    "safra": "26/26",
+    "categoria": "S2",
+    "lote": "99QQ01",
+    "peneira": "S/P",
+    "embalagem": "BB600",
+    "bags": 20,
+    "peso_bag": 600,
+    "total_kg": 12000,
+    "localizacao": "UBS X",
+    "observacoes": null
+   },
+   {
+    "aba": "A",
+    "linha": 4,
+    "cultivar": "CVA",
+    "cultura_planilha": null,
+    "data": null,
+    "safra": "26/26",
+    "categoria": "S2",
+    "lote": "99QQ01",
+    "peneira": "S/P",
+    "embalagem": "BB600",
+    "bags": 20,
+    "peso_bag": 600,
+    "total_kg": 12000,
+    "localizacao": "UBS X",
+    "observacoes": null
+   }
+  ],
+  "espera": {
+   "lotIds": [
+    "INV2626_AVEIA_BRANCA_99QQ01"
+   ],
+   "bags": 20,
+   "kg": 12000,
+   "conflitos": [],
+   "avisos": 1
+  }
+ },
+ {
+  "nome": "continuacao valida do mesmo lote soma de forma deterministica",
+  "culturas": {
+   "CVA": {
+    "cultura": "Aveia Branca"
+   },
+   "CVB": {
+    "cultura": "Aveia Branca"
+   },
+   "CVT": {
+    "cultura": "Trigo"
+   }
+  },
+  "linhas": [
+   {
+    "aba": "A",
+    "linha": 9,
+    "cultivar": "CVA",
+    "cultura_planilha": null,
+    "data": null,
+    "safra": "26/26",
+    "categoria": "S2",
+    "lote": "99QQ01",
+    "peneira": "S/P",
+    "embalagem": "BB600",
+    "bags": 5,
+    "peso_bag": 600,
+    "total_kg": 3000,
+    "localizacao": "UBS Y",
+    "observacoes": null
+   },
+   {
+    "aba": "A",
+    "linha": 3,
+    "cultivar": "CVA",
+    "cultura_planilha": null,
+    "data": null,
+    "safra": "26/26",
+    "categoria": "S2",
+    "lote": "99QQ01",
+    "peneira": "S/P",
+    "embalagem": "BB600",
+    "bags": 20,
+    "peso_bag": 600,
+    "total_kg": 12000,
+    "localizacao": "UBS X",
+    "observacoes": null
+   }
+  ],
+  "espera": {
+   "lotIds": [
+    "INV2626_AVEIA_BRANCA_99QQ01"
+   ],
+   "bags": 25,
+   "kg": 15000,
+   "conflitos": [],
+   "localizacao": "UBS X · UBS Y"
+  }
+ },
+ {
+  "nome": "mesmo numero de lote em culturas diferentes = identidades diferentes",
+  "culturas": {
+   "CVA": {
+    "cultura": "Aveia Branca"
+   },
+   "CVB": {
+    "cultura": "Aveia Branca"
+   },
+   "CVT": {
+    "cultura": "Trigo"
+   }
+  },
+  "linhas": [
+   {
+    "aba": "A",
+    "linha": 3,
+    "cultivar": "CVA",
+    "cultura_planilha": null,
+    "data": null,
+    "safra": "26/26",
+    "categoria": "S2",
+    "lote": "99QQ01",
+    "peneira": "S/P",
+    "embalagem": "BB600",
+    "bags": 20,
+    "peso_bag": 600,
+    "total_kg": 12000,
+    "localizacao": "UBS X",
+    "observacoes": null
+   },
+   {
+    "aba": "A",
+    "linha": 4,
+    "cultivar": "CVT",
+    "cultura_planilha": null,
+    "data": null,
+    "safra": "26/26",
+    "categoria": "S2",
+    "lote": "99QQ01",
+    "peneira": "S/P",
+    "embalagem": "BB600",
+    "bags": 20,
+    "peso_bag": 600,
+    "total_kg": 12000,
+    "localizacao": "UBS X",
+    "observacoes": null
+   }
+  ],
+  "espera": {
+   "lotIds": [
+    "INV2626_AVEIA_BRANCA_99QQ01",
+    "INV2626_TRIGO_99QQ01"
+   ],
+   "bags": 40,
+   "kg": 24000,
+   "conflitos": []
+  }
+ },
+ {
+  "nome": "mesma cultura + mesmo lote com cultivar diferente = conflito",
+  "culturas": {
+   "CVA": {
+    "cultura": "Aveia Branca"
+   },
+   "CVB": {
+    "cultura": "Aveia Branca"
+   },
+   "CVT": {
+    "cultura": "Trigo"
+   }
+  },
+  "linhas": [
+   {
+    "aba": "A",
+    "linha": 3,
+    "cultivar": "CVA",
+    "cultura_planilha": null,
+    "data": null,
+    "safra": "26/26",
+    "categoria": "S2",
+    "lote": "99QQ01",
+    "peneira": "S/P",
+    "embalagem": "BB600",
+    "bags": 20,
+    "peso_bag": 600,
+    "total_kg": 12000,
+    "localizacao": "UBS X",
+    "observacoes": null
+   },
+   {
+    "aba": "A",
+    "linha": 4,
+    "cultivar": "CVB",
+    "cultura_planilha": null,
+    "data": null,
+    "safra": "26/26",
+    "categoria": "S2",
+    "lote": "99QQ01",
+    "peneira": "S/P",
+    "embalagem": "BB600",
+    "bags": 20,
+    "peso_bag": 600,
+    "total_kg": 12000,
+    "localizacao": "UBS X",
+    "observacoes": null
+   }
+  ],
+  "espera": {
+   "lotIds": [],
+   "conflitos": [
+    "cultivar_divergente"
+   ]
+  }
+ },
+ {
+  "nome": "mesma cultura + mesmo lote com categoria diferente = conflito",
+  "culturas": {
+   "CVA": {
+    "cultura": "Aveia Branca"
+   },
+   "CVB": {
+    "cultura": "Aveia Branca"
+   },
+   "CVT": {
+    "cultura": "Trigo"
+   }
+  },
+  "linhas": [
+   {
+    "aba": "A",
+    "linha": 3,
+    "cultivar": "CVA",
+    "cultura_planilha": null,
+    "data": null,
+    "safra": "26/26",
+    "categoria": "S2",
+    "lote": "99QQ01",
+    "peneira": "S/P",
+    "embalagem": "BB600",
+    "bags": 20,
+    "peso_bag": 600,
+    "total_kg": 12000,
+    "localizacao": "UBS X",
+    "observacoes": null
+   },
+   {
+    "aba": "A",
+    "linha": 4,
+    "cultivar": "CVA",
+    "cultura_planilha": null,
+    "data": null,
+    "safra": "26/26",
+    "categoria": "C2",
+    "lote": "99QQ01",
+    "peneira": "S/P",
+    "embalagem": "BB600",
+    "bags": 20,
+    "peso_bag": 600,
+    "total_kg": 12000,
+    "localizacao": "UBS X",
+    "observacoes": null
+   }
+  ],
+  "espera": {
+   "lotIds": [],
+   "conflitos": [
+    "categoria_divergente"
+   ]
+  }
+ },
+ {
+  "nome": "mesma cultura + mesmo lote com peso por bag diferente = conflito",
+  "culturas": {
+   "CVA": {
+    "cultura": "Aveia Branca"
+   },
+   "CVB": {
+    "cultura": "Aveia Branca"
+   },
+   "CVT": {
+    "cultura": "Trigo"
+   }
+  },
+  "linhas": [
+   {
+    "aba": "A",
+    "linha": 3,
+    "cultivar": "CVA",
+    "cultura_planilha": null,
+    "data": null,
+    "safra": "26/26",
+    "categoria": "S2",
+    "lote": "99QQ01",
+    "peneira": "S/P",
+    "embalagem": "BB600",
+    "bags": 20,
+    "peso_bag": 600,
+    "total_kg": 12000,
+    "localizacao": "UBS X",
+    "observacoes": null
+   },
+   {
+    "aba": "A",
+    "linha": 4,
+    "cultivar": "CVA",
+    "cultura_planilha": null,
+    "data": null,
+    "safra": "26/26",
+    "categoria": "S2",
+    "lote": "99QQ01",
+    "peneira": "S/P",
+    "embalagem": "BB600",
+    "bags": 20,
+    "peso_bag": 1000,
+    "total_kg": 20000,
+    "localizacao": "UBS X",
+    "observacoes": null
+   }
+  ],
+  "espera": {
+   "lotIds": [],
+   "conflitos": [
+    "peso_bag_divergente"
+   ]
+  }
+ },
+ {
+  "nome": "Total incompativel com N BB x PESO = conflito",
+  "culturas": {
+   "CVA": {
+    "cultura": "Aveia Branca"
+   },
+   "CVB": {
+    "cultura": "Aveia Branca"
+   },
+   "CVT": {
+    "cultura": "Trigo"
+   }
+  },
+  "linhas": [
+   {
+    "aba": "A",
+    "linha": 3,
+    "cultivar": "CVA",
+    "cultura_planilha": null,
+    "data": null,
+    "safra": "26/26",
+    "categoria": "S2",
+    "lote": "99QQ01",
+    "peneira": "S/P",
+    "embalagem": "BB600",
+    "bags": 20,
+    "peso_bag": 600,
+    "total_kg": 11000,
+    "localizacao": "UBS X",
+    "observacoes": null
+   }
+  ],
+  "espera": {
+   "lotIds": [],
+   "conflitos": [
+    "quantidade_incompativel"
+   ]
+  }
+ },
+ {
+  "nome": "cultivar sem cultura em lugar nenhum = conflito (sem identidade)",
+  "culturas": {
+   "CVA": {
+    "cultura": "Aveia Branca"
+   },
+   "CVB": {
+    "cultura": "Aveia Branca"
+   },
+   "CVT": {
+    "cultura": "Trigo"
+   }
+  },
+  "linhas": [
+   {
+    "aba": "A",
+    "linha": 3,
+    "cultivar": "DESCONHECIDO",
+    "cultura_planilha": null,
+    "data": null,
+    "safra": "26/26",
+    "categoria": "S2",
+    "lote": "99QQ01",
+    "peneira": "S/P",
+    "embalagem": "BB600",
+    "bags": 20,
+    "peso_bag": 600,
+    "total_kg": 12000,
+    "localizacao": "UBS X",
+    "observacoes": null
+   }
+  ],
+  "espera": {
+   "lotIds": [],
+   "conflitos": [
+    "sem_cultura"
+   ]
+  }
+ },
+ {
+  "nome": "cultura pela planilha quando o cadastro nao tem",
+  "culturas": {},
+  "linhas": [
+   {
+    "aba": "A",
+    "linha": 3,
+    "cultivar": "CVTESTE8",
+    "cultura_planilha": "Aveia Branca",
+    "data": null,
+    "safra": "26/26",
+    "categoria": "S2",
+    "lote": "PGW1",
+    "peneira": "S/P",
+    "embalagem": "BB600",
+    "bags": 20,
+    "peso_bag": 600,
+    "total_kg": 12000,
+    "localizacao": "UBS X",
+    "observacoes": null
+   }
+  ],
+  "espera": {
+   "lotIds": [
+    "INV2626_AVEIA_BRANCA_PGW1"
+   ],
+   "bags": 20,
+   "kg": 12000,
+   "conflitos": []
+  }
+ },
+ {
+  "nome": "cadastro tem prioridade sobre a planilha",
+  "culturas": {
+   "CVTESTE8": {
+    "cultura": "Aveia Preta"
+   }
+  },
+  "linhas": [
+   {
+    "aba": "A",
+    "linha": 3,
+    "cultivar": "CVTESTE8",
+    "cultura_planilha": "Aveia Branca",
+    "data": null,
+    "safra": "26/26",
+    "categoria": "S2",
+    "lote": "PGW1",
+    "peneira": "S/P",
+    "embalagem": "BB600",
+    "bags": 20,
+    "peso_bag": 600,
+    "total_kg": 12000,
+    "localizacao": "UBS X",
+    "observacoes": null
+   }
+  ],
+  "espera": {
+   "lotIds": [
+    "INV2626_AVEIA_PRETA_PGW1"
+   ],
+   "bags": 20,
+   "kg": 12000,
+   "conflitos": []
+  }
+ },
+ {
+  "nome": "codigo de lote escrito diferente (espaco/caixa/ponto) = mesmo lote",
+  "culturas": {
+   "CVA": {
+    "cultura": "Aveia Branca"
+   },
+   "CVB": {
+    "cultura": "Aveia Branca"
+   },
+   "CVT": {
+    "cultura": "Trigo"
+   }
+  },
+  "linhas": [
+   {
+    "aba": "A",
+    "linha": 3,
+    "cultivar": "CVA",
+    "cultura_planilha": null,
+    "data": null,
+    "safra": "26/26",
+    "categoria": "S2",
+    "lote": "99qq01 ",
+    "peneira": "S/P",
+    "embalagem": "BB600",
+    "bags": 20,
+    "peso_bag": 600,
+    "total_kg": 12000,
+    "localizacao": "UBS X",
+    "observacoes": null
+   },
+   {
+    "aba": "A",
+    "linha": 4,
+    "cultivar": "CVA",
+    "cultura_planilha": null,
+    "data": null,
+    "safra": "26/26",
+    "categoria": "S2",
+    "lote": " 99QQ01.",
+    "peneira": "S/P",
+    "embalagem": "BB600",
+    "bags": 4,
+    "peso_bag": 600,
+    "total_kg": 2400,
+    "localizacao": "UBS X",
+    "observacoes": null
+   }
+  ],
+  "espera": {
+   "lotIds": [
+    "INV2626_AVEIA_BRANCA_99QQ01"
+   ],
+   "bags": 24,
+   "kg": 14400,
+   "conflitos": []
+  }
+ }
+]

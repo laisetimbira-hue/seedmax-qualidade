@@ -40,3 +40,8 @@ exports.ponteModulo = onCall({
     throw new HttpsError('internal', 'erro-interno');
   }
 });
+
+
+// Beneficiamento de Inverno: função segura de sincronização (arquivo próprio,
+// não mexe na ponte de login). Ver benef-inverno-funcao.js.
+Object.assign(exports, require('./benef-inverno-funcao'));

@@ -24,7 +24,9 @@ import secrets
 
 import seedmax_dados as store
 
-PERFIS = ["ADMIN", "QUALIDADE", "TSI", "RASTREL", "VISUALIZACAO"]
+# SINC_BENEF_INVERNO: conta técnica do computador da empresa — só consegue chamar a
+# função sincronizarBenefInverno; não lê nenhum dado (as regras não liberam este perfil).
+PERFIS = ["ADMIN", "QUALIDADE", "TSI", "RASTREL", "VISUALIZACAO", "SINC_BENEF_INVERNO"]
 
 
 def main():
