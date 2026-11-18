@@ -1,81 +1,98 @@
 # Beneficiamento de Inverno — sincronização a partir do servidor da empresa
 
-A planilha oficial `LOTES BENEFICIADOS INVERNO 26-26.xlsx` continua no
-servidor da empresa e continua sendo preenchida normalmente pela equipe.
-Ela **não** vai para o Google Drive. Um computador Windows da empresa lê a
-planilha e atualiza o SEEDMAX.
+A planilha oficial `LOTES BENEFICIADOS INVERNO 26-26.xlsx` continua no servidor
+da empresa, preenchida normalmente pela equipe. Ela **não** vai para o Google
+Drive, e o computador da empresa **não** tem credencial administrativa do Firebase.
 
 ```
-Excel no servidor  →  sincronizar_benef_inverno.py (Windows, Agendador de Tarefas)
-                   →  transforma em BENEF_INVERNO
-                   →  compara com o Firestore (qualidade/BENEF_INVERNO)
-                   →  grava só se mudou, e só esse conjunto
-                   →  SEEDMAX › Inverno › Beneficiamento
+Excel no servidor
+  → computador da empresa (sincronizar_benef_inverno.py, Agendador de Tarefas)
+      1. lê uma cópia da planilha
+      2. interpreta e consolida por lote (Safra + Cultura + Lote)
+      3. valida: repetição / conflito → PARA, nada é enviado
+      4. compara com o publicado (hash) — igual: não envia nada
+      5. envia as linhas para a função segura
+  → Cloud Function sincronizarBenefInverno (ponte, southamerica-east1)
+      valida de novo · consolida de novo · grava SÓ qualidade/BENEF_INVERNO
+      (_meta mesclado em transação) · registra sincronizacoes/BENEF_INVERNO
+  → SEEDMAX › Inverno › Beneficiamento
 ```
 
-## O que o sincronizador NÃO toca
+## Segurança
 
-LOTS_INVERNO, análises, lotes comprados, nosso plantio, dados de verão, TSI e
-RASTREL. O script entrega para gravação um único conjunto (`BENEF_INVERNO`);
-os outros são lidos (CV_META_INVERNO, para a cultura) e nunca reescritos. O
-robô do GitHub (`atualizar.py`) também nunca grava `BENEF_INVERNO`.
+| Peça | Acesso |
+|---|---|
+| Computador da empresa | conta técnica do Firebase Auth, perfil `SINC_BENEF_INVERNO`; senha no Gerenciador de Credenciais do Windows; recebe um token de 1 h. As regras do Firestore **não liberam nada** para esse perfil: ele não lê nem grava dado nenhum direto. |
+| Função `sincronizarBenefInverno` | roda como `sinc-benef-inverno@seedmax-4c755` (conta própria, **sem chave JSON**, papel *Cloud Datastore User*). Só aceita a conta `SINC_BENEF_INVERNO` (nem ADMIN usa essa porta). |
+| O que a função grava | `qualidade/BENEF_INVERNO__N`, a entrada `BENEF_INVERNO` em `qualidade/_meta`, e `sincronizacoes/BENEF_INVERNO` (+ `historico`). Qualquer outro documento é recusado no código. |
+| Revogar | desativar a conta técnica (`usuarios.py desativar`) ou trocar a senha: o próximo envio já é recusado. |
 
-O índice `qualidade/_meta` é atualizado dentro de uma transação que relê o
-índice na hora de gravar e troca só a entrada do próprio conjunto — o robô do
-GitHub e o sincronizador podem rodar ao mesmo tempo sem um apagar o que o
-outro gravou (ver `seedmax_dados.gravar_mesclando`). **Essa correção precisa
-estar na `main` antes de ligar o sincronizador.**
+## Respostas da função (o script do Windows mostra no log)
 
-## Regras de leitura da planilha
+| HTTP | `erro` | Quando |
+|---|---|---|
+| 200 | — | `mudou: true` (publicado) ou `mudou: false` (igual ao que já estava) |
+| 400 | `payload_invalido` | vazio, campo desconhecido, outro conjunto, número fora do intervalo… |
+| 401 / 403 | `token_invalido` / `sem_permissao` | sem login, senha errada, conta inativa, perfil errado |
+| 409 | `conflito` | mesmo lote com cultivar/categoria/peneira/embalagem/peso diferentes, Total ≠ N° BB × PESO, cultivar sem cultura |
+| 422 | `queda_suspeita` | lotes caíram mais da metade (reenviar com `--confirmar-queda` se for de propósito) |
 
-* Todas as abas visíveis (hoje `INVERNO 2026` e `PGW`); colunas achadas pelo
-  texto do cabeçalho: DATA, CULTIVAR, SAFRA, CAT., LOTE, PEN., EMBALAGEM,
-  N° BB, PESO, Total, Localização, Observações.
-* Só vira lote a linha com CULTIVAR, LOTE e N° BB > 0. Linhas de totalização
-  (`N° BAGS / FINALIZADO`) são ignoradas.
-* Volume do lote = coluna **Total**; se vazia, N° BB × PESO (diferença entre
-  os dois vira aviso no log).
-* Peneira vai como está na planilha (`S/P`) — não existe P1/P2 no Inverno.
-* Cultura: 1º `CV_META_INVERNO` pelo cultivar; senão a cultura escrita na
-  planilha (ex.: título da aba "AVEIA BRANCA - IMPACTA"); senão vazio.
-* `lotId` pela regra única da Central de Lotes: `INV2626_<CULTURA>_<LOTE>`.
+## Identidade do lote — não duplica
 
-Travas: se a planilha ficar sem nenhum lote, ou cair mais da metade dos
-lotes de uma vez, o script **não grava** (sai com código 2 e explica no log).
+* Identidade única do Inverno: **Safra + Cultura + Lote** = `INV2626_<CULTURA>_<LOTE>`
+  (mesma regra da Central de Lotes, TSI e RASTREL).
+* Cultura: 1º `CV_META_INVERNO` pelo cultivar; senão a cultura escrita na planilha
+  (ex.: título da aba "AVEIA BRANCA - …"); sem nenhuma das duas → conflito.
+* Mesma cultura + mesmo lote → uma entrada só. Linha idêntica repetida → contada
+  uma vez (aviso). Linhas do mesmo lote com os mesmos dados e quantidades
+  diferentes → continuação: soma, na ordem aba/linha.
+* Mesmo número de lote em culturas diferentes → lotes diferentes.
+* Dados conflitantes no mesmo lote → a sincronização para e nada é publicado.
+* Central de Lotes: o beneficiamento é **vinculado** ao lote que já existe
+  (`lots/{lotId}.beneficiamento`). Lote que só aparece no beneficiamento não
+  vira documento novo na Central; aparece no relatório da sincronização da Central
+  e se liga sozinho quando o lote entrar na planilha de análises.
+* Os mesmos casos de teste rodam no Python e na função (`tests/casos_benef_inverno.json`).
 
 ## Instalação no computador da empresa (uma vez)
 
-1. **Python 3.12** (python.org → Windows installer; marcar "Add python.exe to
-   PATH"). Conferir no prompt: `py -3 --version`.
-2. **Pasta** `C:\SEEDMAX\` com:
-   * `sincronizador\` → cópia da pasta `scripts\` deste repositório
-     (precisa de `sincronizar_benef_inverno.py`, `benef_inverno.py`,
-     `seedmax_dados.py`, `central_lotes.py`, `requirements-benef-inverno.txt`
-     e a subpasta `windows\`);
-   * `credencial\` → o arquivo da conta de serviço (ver item 4);
-   * `logs\` → criada sozinha.
+1. **Python 3.12** (python.org; marcar "Add python.exe to PATH"). Conferir: `py -3 --version`.
+2. **Pasta** `C:\SEEDMAX\sincronizador\` com `sincronizar_benef_inverno.py`,
+   `benef_inverno.py`, `central_lotes.py`, `requirements-benef-inverno.txt` e a
+   subpasta `windows\` (cópia da pasta `scripts\` deste repositório).
 3. **Bibliotecas**: `py -3 -m pip install -r C:\SEEDMAX\sincronizador\requirements-benef-inverno.txt`
-4. **Credencial**: conta de serviço dedicada `seedmax-benef-inverno` no
-   projeto `seedmax-4c755`, papel *Cloud Datastore User*; baixar a chave JSON
-   e salvar em `C:\SEEDMAX\credencial\seedmax-benef-inverno.json`. Restringir
-   a pasta (Propriedades → Segurança) à conta que roda a tarefa e aos
-   administradores. Nunca enviar esse arquivo por e-mail nem colocar no
-   repositório.
-5. **Configuração**: copiar `windows\config_benef_inverno.exemplo.bat` para
-   `windows\config_benef_inverno.bat` e ajustar o caminho de rede da planilha
-   (`\\SERVIDOR\...`, não `Z:\`) e o da credencial.
-6. **Teste sem gravar**: `C:\SEEDMAX\sincronizador\windows\sincronizar_benef_inverno.bat --simular`
-7. **Primeira gravação**: o mesmo comando sem `--simular`. Conferir a aba no SEEDMAX.
-8. **Agendar**: executar `windows\agendar_tarefa.bat` como administrador
-   (seg–sex, a cada 15 min, 06:00–20:00; pede a senha da conta que acessa o
-   servidor, para rodar mesmo sem ninguém logado).
+   (só `openpyxl` e `keyring` — nada do Firebase).
+4. **Configuração**: copiar `windows\config_benef_inverno.exemplo.bat` para
+   `windows\config_benef_inverno.bat` e ajustar o caminho de rede da planilha e o
+   e-mail da conta técnica.
+5. **Senha da conta técnica** (uma vez, na conta do Windows que vai rodar a tarefa):
+   `windows\sincronizar_benef_inverno.bat --guardar-senha`
+6. **Teste sem enviar**: `windows\sincronizar_benef_inverno.bat --simular`
+7. **Primeira sincronização**: o mesmo comando sem `--simular`; conferir a aba no SEEDMAX.
+8. **Agendar**: `windows\agendar_tarefa.bat` como administrador (seg–sex, a cada
+   15 min, 06:00–20:00; roda mesmo sem ninguém logado).
 
-O computador precisa estar ligado e com acesso ao servidor e à internet
-(saída HTTPS para `firestore.googleapis.com`) no horário da tarefa.
+O computador precisa estar ligado, com acesso ao servidor e saída HTTPS para
+`identitytoolkit.googleapis.com` e `southamerica-east1-seedmax-4c755.cloudfunctions.net`.
 
-## Operação
+## Publicação (feita no Cloud Shell, quando aprovada)
 
-* Log mensal em `C:\SEEDMAX\logs\benef_inverno_AAAA-MM.log`.
-* Rodar na mão a qualquer momento: o `.bat` (com ou sem `--simular`).
-* Ver/pausar a tarefa: Agendador de Tarefas → "SEEDMAX - Beneficiamento Inverno".
-* Planilha aberta no Excel por alguém não atrapalha: o script lê uma cópia.
+1. Juntar a branch na `main` (inclui a correção do índice `_meta` no robô do GitHub).
+2. Conta da função: `gcloud iam service-accounts create sinc-benef-inverno` +
+   papel `roles/datastore.user` no projeto `seedmax-4c755`. Sem chave.
+3. Copiar `ponte/benef-inverno.js` e `ponte/benef-inverno-funcao.js` para
+   `~/seedmax-ponte/functions/src/` e acrescentar no fim do `index.js` da ponte:
+   `Object.assign(exports, require('./src/benef-inverno-funcao'));`
+4. Publicar **só** a função nova:
+   `firebase deploy --only functions:ponte:sincronizarBenefInverno --project seedmax-4c755`
+   (as quatro funções da ponte de login e o site não são tocados).
+5. Conta técnica: `python scripts/usuarios.py adicionar --perfil SINC_BENEF_INVERNO ...`
+6. Publicar o site (aba Beneficiamento) pelo caminho de sempre.
+
+## Testes
+
+* `python -m pytest tests/test_benef_inverno.py` — leitura, consolidação, os 4 casos
+  de identidade, Central, índice concorrente e ponta a ponta local.
+* `node --test ponte/test/*.test.js` — função (validação, autenticação, só BENEF_INVERNO).
+* `tests/e2e_benef_inverno/emulador.py` — ponta a ponta nos emuladores oficiais
+  (Auth + Firestore + Functions, projeto `demo-seedmax`).
