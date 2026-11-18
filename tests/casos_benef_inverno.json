@@ -59,7 +59,7 @@
   }
  },
  {
-  "nome": "mesma linha repetida duas vezes no Excel nao duplica",
+  "nome": "mesma linha repetida duas vezes no Excel = conflito (nao publica)",
   "culturas": {
    "CVA": {
     "cultura": "Aveia Branca"
@@ -108,13 +108,10 @@
    }
   ],
   "espera": {
-   "lotIds": [
-    "INV2626_AVEIA_BRANCA_99QQ01"
-   ],
-   "bags": 20,
-   "kg": 12000,
-   "conflitos": [],
-   "avisos": 1
+   "lotIds": [],
+   "conflitos": [
+    "linha_duplicada"
+   ]
   }
  },
  {

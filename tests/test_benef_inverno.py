@@ -151,13 +151,20 @@ def test_1_lote_em_LOTS_INVERNO_e_em_BENEF_INVERNO_continua_uma_identidade_na_ce
     assert len(docs2) == 1
 
 
-def test_2_mesma_linha_repetida_duas_vezes_no_excel_nao_duplica_lote(tmp_path):
-    benef, conflitos, avisos = bi.ler(planilha(tmp_path / "p.xlsx", repetir=True), {"CVTESTE1": "Trigo"})
-    assert not conflitos
-    ids = [d["lotId"] for c in benef for d in c["detail"]]
-    assert ids.count("INV2626_TRIGO_99XX01") == 1
-    assert bi.totais(benef)["bags"] == 102                       # não somou a linha repetida
-    assert any("repete exatamente" in a for a in avisos)
+def test_2_mesma_linha_repetida_duas_vezes_no_excel_nao_duplica_e_para_a_sincronizacao(tmp_path):
+    """Linha 100% idêntica repetida = possível lançamento em dobro: conflito.
+    Não soma (não duplica o lote) e não ignora em silêncio: nada é publicado
+    e o conflito aponta o lote e as duas linhas."""
+    benef, conflitos, _ = bi.ler(planilha(tmp_path / "p.xlsx", repetir=True), {"CVTESTE1": "Trigo"})
+    assert benef == []                                            # nada para publicar
+    assert [c["tipo"] for c in conflitos] == ["linha_duplicada"]
+    c = conflitos[0]
+    assert c["lote"] == "99XX01" and c["lotId"] == "INV2626_TRIGO_99XX01"
+    assert c["onde"] == ["aba 'INVERNO 2026' linha 3", "aba 'INVERNO 2026' linha 6"]
+    assert "confira a planilha" in c["texto"]
+    # a mesma linha com quantidade diferente continua sendo continuação válida (soma)
+    benef2, conf2, _ = bi.consolidar([linha("99QQ01"), linha("99QQ01", bags=5, linha=4)], CULTURAS)
+    assert conf2 == [] and bi.totais(benef2)["bags"] == 25
 
 
 def test_3_mesmo_numero_de_lote_em_culturas_diferentes_sao_identidades_diferentes():
@@ -275,8 +282,8 @@ def test_ponta_a_ponta(servidor, tmp_path):
     assert _rodar(sv, plan) == 0
     assert _arquivos(sv["banco"]) == depois
 
-    # linha repetida no Excel: mesmo resultado, nada muda
-    assert _rodar(sv, planilha(tmp_path / "rep.xlsx", repetir=True)) == 0
+    # linha 100% idêntica repetida no Excel: conflito, para ANTES de enviar e nada muda
+    assert _rodar(sv, planilha(tmp_path / "rep.xlsx", repetir=True)) == 3
     assert _arquivos(sv["banco"]) == depois
 
     # conflito: o script para ANTES de enviar (código 3) e nada muda
@@ -305,6 +312,9 @@ def test_ponta_a_ponta_funcao_recusa_conflito_mesmo_se_o_script_nao_detectar(ser
              "linhas": [linha("99XX01", cv="CVTESTE1"), linha("99XX01", cv="CVTESTE1", cat="C2", linha=4)]}
     st, r = sync._post(servidor["url"], corpo, token)
     assert st == 409 and r["erro"] == "conflito"
+    st, r = sync._post(servidor["url"], dict(corpo, linhas=[linha("99XX01", cv="CVTESTE1"),
+                                                             linha("99XX01", cv="CVTESTE1", linha=4)]), token)
+    assert st == 409 and r["detalhes"][0]["tipo"] == "linha_duplicada"
     st, r = sync._post(servidor["url"], dict(corpo, linhas=[]), token)
     assert st == 400 and r["erro"] == "payload_invalido"
     st, r = sync._post(servidor["url"], dict(corpo, conjunto="LOTS"), token)

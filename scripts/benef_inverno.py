@@ -16,8 +16,8 @@ informação VINCULADA a esse lote; nunca cria identidade nova.
 
   * mesma cultura + mesmo lote = o mesmo lote (uma entrada só);
   * mesmo número de lote em culturas diferentes = lotes diferentes;
-  * linha repetida idêntica (todos os campos iguais) = a mesma linha digitada
-    duas vezes: entra uma vez só (aviso no log);
+  * linha 100% idêntica repetida = possível lançamento em dobro: CONFLITO
+    (a sincronização para e aponta o lote e as linhas);
   * linhas do mesmo lote com cultivar, categoria, peneira, embalagem e peso
     por bag iguais, mas quantidades diferentes = continuação do lote: soma
     bags e kg, na ordem aba/linha (determinístico);
@@ -65,7 +65,7 @@ CULTURAS = ["Trigo Mourisco", "Trigo", "Aveia Branca", "Aveia Preta", "Cevada",
 
 # campos que precisam ser iguais em todas as linhas do mesmo lote
 CAMPOS_DO_LOTE = ("cultivar", "categoria", "peneira", "embalagem", "peso_bag")
-# campos que, todos iguais, indicam a mesma linha digitada duas vezes
+# campos que, todos iguais, indicam linha repetida (conflito: possível lançamento em dobro)
 CAMPOS_DA_LINHA = ("cultivar", "categoria", "peneira", "embalagem", "bags", "peso_bag",
                    "kg", "localizacao", "observacoes", "data", "safra")
 
@@ -273,15 +273,25 @@ def consolidar(linhas, culturas=None):
 
     lotes = []
     for lot_id, ls in grupos.items():
-        # (1) linha idêntica repetida = digitada duas vezes: conta uma vez
-        unicas, vistas = [], set()
+        # (1) linha 100% idêntica repetida = possível duplicação: CONFLITO
+        #     (não soma nem ignora — pede conferência da planilha)
+        unicas, vistas = [], {}
+        duplicada = False
         for l in ls:
             chave = tuple(_cmp(l.get(c)) for c in CAMPOS_DA_LINHA)
             if chave in vistas:
-                avisos.append(f"lote {l['codigo']}: {_onde(l)} repete exatamente outra linha — contada uma vez")
+                duplicada = True
+                conflitos.append({
+                    "tipo": "linha_duplicada", "lote": l["codigo"], "lotId": lot_id,
+                    "onde": [_onde(vistas[chave]), _onde(l)],
+                    "texto": "linha completamente idêntica repetida (possível lançamento em dobro) — "
+                             "confira a planilha: apague a repetida ou, se for outro carregamento, "
+                             "diferencie a linha"})
                 continue
-            vistas.add(chave)
+            vistas[chave] = l
             unicas.append(l)
+        if duplicada:
+            continue
         # (2) dados do lote precisam ser os mesmos em todas as linhas
         conflito = False
         for campo in CAMPOS_DO_LOTE:

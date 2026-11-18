@@ -167,12 +167,20 @@ function consolidar(linhas, culturas) {
 
   const lotes = [];
   for (const [lotId, ls] of grupos) {
-    const unicas = [], vistas = new Set();
+    // linha 100% idêntica repetida = possível lançamento em dobro: CONFLITO
+    const unicas = [], vistas = new Map();
+    let duplicada = false;
     for (const l of ls) {
       const chave = JSON.stringify(CAMPOS_DA_LINHA.map(c => cmp(l[c])));
-      if (vistas.has(chave)) { avisos.push(`lote ${l.codigo}: ${onde(l)} repete exatamente outra linha — contada uma vez`); continue; }
-      vistas.add(chave); unicas.push(l);
+      if (vistas.has(chave)) {
+        duplicada = true;
+        conflitos.push({ tipo: 'linha_duplicada', lote: l.codigo, lotId, onde: [onde(vistas.get(chave)), onde(l)],
+          texto: 'linha completamente idêntica repetida (possível lançamento em dobro) — confira a planilha: apague a repetida ou, se for outro carregamento, diferencie a linha' });
+        continue;
+      }
+      vistas.set(chave, l); unicas.push(l);
     }
+    if (duplicada) continue;
     let conflito = false;
     for (const campo of CAMPOS_DO_LOTE) {
       const vals = new Map();

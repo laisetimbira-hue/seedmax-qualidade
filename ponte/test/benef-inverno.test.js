@@ -142,6 +142,19 @@ test('conflito no mesmo lote: para tudo, nada publicado, conflito registrado', a
   assert.strictEqual(reg.conflitos[0].tipo, 'categoria_divergente');
 });
 
+test('linha 100% idêntica repetida: 409 linha_duplicada, nada publicado, lote e linhas informados', async () => {
+  const b = bancoFalso(BASE()); const s = bi.criarSincronizador(b.deps()); const antes = JSON.stringify(b.docs);
+  await assert.rejects(s({ idToken: 'tok-sync', corpo: corpo([L('99QQ01'), L('99QQ01', { linha: 9 })]) }), e => {
+    assert.strictEqual(e.status, 409);
+    assert.strictEqual(e.detalhes[0].tipo, 'linha_duplicada');
+    assert.strictEqual(e.detalhes[0].lotId, 'INV2626_AVEIA_BRANCA_99QQ01');
+    assert.deepStrictEqual(e.detalhes[0].onde, ["aba 'INVERNO 2026' linha 3", "aba 'INVERNO 2026' linha 9"]);
+    return true;
+  });
+  assert.strictEqual(JSON.stringify(b.docs), antes);
+  assert.strictEqual(b.registros.at(-1).resultado, 'CONFLITO');
+});
+
 test('queda brusca de lotes exige confirmação', async () => {
   const atual = [{ cultivar: 'CVTESTE9', cultura: 'Aveia Branca', lotes: 20, bags_total: 1, kg_total: 1, detail: [] }];
   const docs = BASE(); const t = bi.js(atual), h = bi.hash(t);

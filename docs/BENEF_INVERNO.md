@@ -34,7 +34,7 @@ Excel no servidor
 | 200 | — | `mudou: true` (publicado) ou `mudou: false` (igual ao que já estava) |
 | 400 | `payload_invalido` | vazio, campo desconhecido, outro conjunto, número fora do intervalo… |
 | 401 / 403 | `token_invalido` / `sem_permissao` | sem login, senha errada, conta inativa, perfil errado |
-| 409 | `conflito` | mesmo lote com cultivar/categoria/peneira/embalagem/peso diferentes, Total ≠ N° BB × PESO, cultivar sem cultura |
+| 409 | `conflito` | linha 100% idêntica repetida; mesmo lote com cultivar/categoria/peneira/embalagem/peso diferentes, Total ≠ N° BB × PESO, cultivar sem cultura |
 | 422 | `queda_suspeita` | lotes caíram mais da metade (reenviar com `--confirmar-queda` se for de propósito) |
 
 ## Identidade do lote — não duplica
@@ -43,11 +43,14 @@ Excel no servidor
   (mesma regra da Central de Lotes, TSI e RASTREL).
 * Cultura: 1º `CV_META_INVERNO` pelo cultivar; senão a cultura escrita na planilha
   (ex.: título da aba "AVEIA BRANCA - …"); sem nenhuma das duas → conflito.
-* Mesma cultura + mesmo lote → uma entrada só. Linha idêntica repetida → contada
-  uma vez (aviso). Linhas do mesmo lote com os mesmos dados e quantidades
-  diferentes → continuação: soma, na ordem aba/linha.
+* Mesma cultura + mesmo lote → uma entrada só. Linhas do mesmo lote com os
+  mesmos dados e quantidades diferentes → continuação: soma, na ordem aba/linha.
+* Linha 100% idêntica repetida → CONFLITO (possível lançamento em dobro): a
+  sincronização para, nada é publicado e o log aponta o lote e as duas linhas.
 * Mesmo número de lote em culturas diferentes → lotes diferentes.
 * Dados conflitantes no mesmo lote → a sincronização para e nada é publicado.
+* Origem da identidade na Central = análises (`LOTS_INVERNO`/comprados). O
+  beneficiamento é informação de uma etapa do lote.
 * Central de Lotes: o beneficiamento é **vinculado** ao lote que já existe
   (`lots/{lotId}.beneficiamento`). Lote que só aparece no beneficiamento não
   vira documento novo na Central; aparece no relatório da sincronização da Central

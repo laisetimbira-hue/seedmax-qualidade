@@ -127,11 +127,11 @@ def main():
        f"{reg.get('resultado')} {reg.get('carimbo')}")
     ok("data da sincronização no índice", bool(meta1["datasets"]["BENEF_INVERNO"].get("sincronizadoEm")))
 
-    print("\n== 2. sem mudança / linha repetida")
+    print("\n== 2. sem mudança / linha repetida (conflito)")
     v = meta1["versao"]
     ok("segunda execução não envia nada", rodar(plan) == 0 and estado_banco()[0]["versao"] == v)
-    ok("linha repetida no Excel não duplica nem muda nada",
-       rodar(planilha(tmp / "rep.xlsx", repetir=True)) == 0 and estado_banco()[0]["versao"] == v)
+    ok("linha 100% idêntica repetida: conflito, para antes de enviar (código 3) e nada muda",
+       rodar(planilha(tmp / "rep.xlsx", repetir=True)) == 3 and estado_banco()[0]["versao"] == v)
 
     print("\n== 3. conflito / contas erradas / envios inválidos direto na função")
     ok("conflito na planilha: para antes de enviar (código 3)",
@@ -147,6 +147,9 @@ def main():
     ok("payload vazio → 400", st == 400 and r.get("erro") == "payload_invalido", f"{st} {r.get('erro')}")
     st, r = post(URL_FUNCAO, dict(base, linhas=[lin("99XX01"), lin("99XX01", linha=4, categoria="C2")]), token)
     ok("mesmo lote com dados conflitantes → 409", st == 409 and r.get("erro") == "conflito", f"{st} {r.get('erro')}")
+    st, r = post(URL_FUNCAO, dict(base, linhas=[lin("99XX01"), lin("99XX01", linha=4)]), token)
+    ok("linha idêntica repetida enviada direto → 409 linha_duplicada",
+       st == 409 and (r.get("detalhes") or [{}])[0].get("tipo") == "linha_duplicada", f"{st}")
     st, r = post(URL_FUNCAO, dict(base, conjunto="LOTS_INVERNO", linhas=[lin("99XX01")]), token)
     ok("outro conjunto → 400", st == 400, f"{st} {r.get('erro')}")
     st, r = post(URL_FUNCAO, dict(base, linhas=[lin("99XX01", germinacao=99)]), token)
