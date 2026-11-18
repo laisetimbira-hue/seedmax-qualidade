@@ -110,6 +110,29 @@ class _DestinoFirestore:
     def ler_todos(self):
         return {d.id: d.to_dict() for d in self.db.collection(COLECAO).stream()}
 
+    def gravar_mesclando(self, partes, mudancas, carimbo):
+        """Grava as partes dos conjuntos que mudaram e atualiza o _meta
+        DENTRO DE UMA TRANSAÇÃO: o _meta é relido na hora de gravar e só as
+        entradas dos conjuntos deste processo são trocadas. Assim, dois
+        processos (o robô do GitHub e o sincronizador do Inverno) podem
+        rodar ao mesmo tempo sem um apagar do índice o que o outro gravou."""
+        col = self.db.collection(COLECAO)
+        ref_meta = col.document("_meta")
+        fs = self._fs
+
+        @fs.transactional
+        def _tx(tx):
+            atual = (ref_meta.get(transaction=tx).to_dict() or {})
+            novo_meta, apagar = _mesclar_meta(atual, mudancas, carimbo)
+            for doc_id, conteudo in partes.items():
+                tx.set(col.document(doc_id), conteudo)
+            for doc_id in apagar:
+                tx.delete(col.document(doc_id))
+            novo_meta = dict(novo_meta, atualizadoEmServidor=fs.SERVER_TIMESTAMP)
+            tx.set(ref_meta, novo_meta)
+
+        _tx(self.db.transaction())
+
     def gravar(self, gravar, apagar):
         batch = self.db.batch()
         col = self.db.collection(COLECAO)
@@ -129,6 +152,12 @@ class _DestinoPasta:
 
     def ler_todos(self):
         return {p.stem: json.loads(p.read_text(encoding="utf-8")) for p in self.pasta.glob("*.json")}
+
+    def gravar_mesclando(self, partes, mudancas, carimbo):
+        p = self.pasta / "_meta.json"
+        atual = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+        novo_meta, apagar = _mesclar_meta(atual, mudancas, carimbo)
+        self.gravar(dict(partes, _meta=novo_meta), apagar)
 
     def gravar(self, gravar, apagar):
         for doc_id, conteudo in gravar.items():
@@ -159,14 +188,42 @@ def ler_conjuntos(destino):
     return meta, dados
 
 
-def publicar(destino, novos, carimbo, meta_atual=None, docs_atuais=None):
+def _mesclar_meta(atual, mudancas, carimbo):
+    """Aplica `mudancas` ({nome: entrada_do_indice}) sobre o _meta ATUAL.
+    Conjuntos de outros processos ficam exatamente como estão no banco.
+    Devolve (novo_meta, partes_antigas_a_apagar)."""
+    atual = dict(atual or {})
+    atual.pop("atualizadoEmServidor", None)
+    indice = dict(atual.get("datasets") or {})
+    apagar = []
+    for nome, entrada in mudancas.items():
+        anterior = indice.get(nome) or {}
+        for i in range(entrada["partes"], anterior.get("partes", 0)):
+            apagar.append(f"{nome}__{i}")
+        indice[nome] = entrada
+    if not mudancas:
+        return dict(atual, verificadoEm=carimbo), []
+    return {
+        "esquema": ESQUEMA,
+        "versao": int(atual.get("versao") or 0) + 1,
+        "atualizadoEm": carimbo,
+        "verificadoEm": carimbo,
+        "datasets": indice,
+        "mudaramNaUltima": list(mudancas),
+    }, apagar
+
+
+def publicar(destino, novos, carimbo, meta_atual=None, docs_atuais=None, renovar_verificacao=True):
     """Grava os conjuntos que mudaram (comparando o hash) e atualiza o _meta.
-    `novos` = {nome: dados}. Conjuntos não informados ficam como estão.
+    `novos` = {nome: dados}. Conjuntos não informados ficam como estão — e
+    continuam assim mesmo que outro processo grave ao mesmo tempo: o _meta é
+    relido e mesclado no momento da gravação (ver gravar_mesclando).
+    renovar_verificacao=False: se nada mudou, não grava NADA (nem a data).
     Devolve a lista de nomes que realmente mudaram."""
     if meta_atual is None:
         meta_atual, _ = ler_conjuntos(destino)
     indice = dict(meta_atual.get("datasets") or {})
-    gravar, apagar, mudaram = {}, [], []
+    partes, mudancas = {}, {}
 
     for nome, dados in novos.items():
         texto = _js(dados)
@@ -176,32 +233,15 @@ def publicar(destino, novos, carimbo, meta_atual=None, docs_atuais=None):
             continue
         pedacos = [texto[i:i + TAMANHO_PARTE] for i in range(0, len(texto), TAMANHO_PARTE)] or [""]
         for i, pedaco in enumerate(pedacos):
-            gravar[f"{nome}__{i}"] = {"nome": nome, "parte": i, "hash": h, "json": pedaco}
-        if anterior:
-            for i in range(len(pedacos), anterior.get("partes", 0)):
-                apagar.append(f"{nome}__{i}")
-        indice[nome] = {
+            partes[f"{nome}__{i}"] = {"nome": nome, "parte": i, "hash": h, "json": pedaco}
+        mudancas[nome] = {
             "hash": h,
             "partes": len(pedacos),
             "bytes": len(texto.encode("utf-8")),
             "itens": len(dados) if isinstance(dados, (list, dict)) else None,
         }
-        mudaram.append(nome)
 
-    if not mudaram and meta_atual.get("atualizadoEm"):
-        # nada mudou nos dados: só renova a data da última verificação
-        gravar["_meta"] = dict(meta_atual, verificadoEm=carimbo)
-        gravar["_meta"].pop("atualizadoEmServidor", None)
-        destino.gravar(gravar, [])
+    if not mudancas and not renovar_verificacao:
         return []
-
-    gravar["_meta"] = {
-        "esquema": ESQUEMA,
-        "versao": int(meta_atual.get("versao") or 0) + 1,
-        "atualizadoEm": carimbo,
-        "verificadoEm": carimbo,
-        "datasets": indice,
-        "mudaramNaUltima": mudaram,
-    }
-    destino.gravar(gravar, apagar)
-    return mudaram
+    destino.gravar_mesclando(partes, mudancas, carimbo)
+    return list(mudancas)

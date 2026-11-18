@@ -8,3 +8,9 @@ erro_email.html
 __pycache__/
 node_modules/
 tests/e2e/*.png
+
+# sincronizador do Beneficiamento de Inverno (computador da empresa)
+scripts/windows/config_benef_inverno.bat
+seedmax-benef-inverno*.json
+logs/
+*.xlsx

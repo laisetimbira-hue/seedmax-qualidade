@@ -13,7 +13,8 @@ Configuração via variáveis de ambiente (secrets do repositório):
   ID_ANALISES          → ID do arquivo ANALISES_DE_SEMENTES_DE_VERAO_25-26.xlsx
   ID_BENEF             → ID do arquivo LOTES_BENEFICIADOS_VERAO_25-26.xlsx
   ID_ANALISES_INVERNO  → (opcional) ID do arquivo ANALISES_DE_SEMENTES_INVERNO
-  ID_BENEF_INVERNO     → (opcional) ID do arquivo de Lotes Beneficiados do Inverno
+  ID_BENEF_INVERNO     → (não usado) o Beneficiamento do Inverno vem do
+                          sincronizador do Windows (sincronizar_benef_inverno.py)
 """
 
 import os
@@ -1273,7 +1274,7 @@ def atualizar_dados(lots, summary, pms_cv, comprados, benef, nosso_plantio, inve
         if inverno.get("benef") is not None:
             novos["BENEF_INVERNO"] = inverno["benef"]
         else:
-            log("  BENEF_INVERNO: preservado (planilha de beneficiados do Inverno ainda não existe)")
+            log("  BENEF_INVERNO: preservado (gravado só pelo sincronizador da empresa)")
 
     # diagnóstico da safra — narrativa gerada a partir dos dados desta execução
     novos["DIAG_DATA"] = montar_diagnostico(lots, summary)
@@ -1612,14 +1613,14 @@ def main():
             cv_meta_atual_inverno = cv_meta_inverno_publicado()
             cv_meta_inverno = montar_cv_meta_inverno(lots_inverno, cv_meta_atual_inverno)
 
-            # a planilha de Beneficiados do Inverno ainda não existe — quando
-            # existir, isso aqui precisa de um parser próprio (a estrutura
-            # dela ainda não foi vista, não dá pra reaproveitar o parse_benef
-            # da soja às cegas). Por ora fica sempre None = preservado.
+            # BENEF_INVERNO NÃO é feito por este robô: a planilha oficial fica
+            # no servidor da empresa e quem grava é o sincronizador do
+            # Windows (scripts/sincronizar_benef_inverno.py). Aqui fica
+            # sempre None = preservado como está no banco.
             benef_inverno = None
             if ID_BENEF_INVERNO:
-                log("  aviso: ID_BENEF_INVERNO configurado, mas ainda não há parser "
-                    "pra essa planilha — BENEF_INVERNO será preservado")
+                log("  aviso: ID_BENEF_INVERNO é ignorado — o Beneficiamento do Inverno "
+                    "vem do sincronizador do computador da empresa")
 
             inverno = {
                 "lots": lots_inverno, "colheita": colheita_inverno,

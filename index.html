@@ -2463,12 +2463,54 @@ html {
     </div>
   </div>
 
-  <!-- INVERNO: BENEFICIAMENTO (ainda sem planilha própria) -->
+  <!-- INVERNO: BENEFICIAMENTO (planilha LOTES BENEFICIADOS INVERNO, sincronizada do servidor da empresa) -->
   <div class="page" id="page-inverno-beneficiamento">
-    <div class="panel" style="text-align:center;padding:48px 24px;color:var(--texto2);">
+    <style>
+      #inv-benef-kpis { display:grid; grid-template-columns:repeat(2,1fr); gap:12px; margin-bottom:16px; }
+      @media (min-width:900px){ #inv-benef-kpis { grid-template-columns:repeat(4,1fr); } }
+      .invb-metricas { display:flex; gap:16px; align-items:center; flex-shrink:0; }
+      .invb-tabela { width:100%; border-collapse:collapse; font-size:0.8rem; min-width:760px; }
+      .invb-tabela th { text-align:left; font-size:0.62rem; text-transform:uppercase; letter-spacing:0.5px; color:var(--texto2); padding:6px 8px; border-bottom:1px solid var(--borda); white-space:nowrap; }
+      .invb-tabela td { padding:7px 8px; border-bottom:1px solid var(--borda); color:var(--texto); white-space:nowrap; }
+      .invb-tabela td.obs { white-space:normal; min-width:120px; }
+      .invb-tabela td.num, .invb-tabela th.num { text-align:right; font-variant-numeric:tabular-nums; }
+      .invb-tabela tr:last-child td { border-bottom:none; }
+      .invb-tabela tfoot td { font-weight:800; border-top:2px solid var(--borda); }
+      .invb-lotes-cards { display:none; flex-direction:column; gap:8px; }
+      .invb-lote-card { background:#fff; border:1px solid var(--borda); border-radius:8px; padding:10px 12px; font-size:0.78rem; }
+      .invb-lote-card .lin { display:flex; justify-content:space-between; gap:8px; margin-top:3px; color:var(--texto2); }
+      .invb-lote-card .lin b { color:var(--texto); }
+      body.dark-mode .invb-lote-card { background:#1E293B; border-color:#334155; }
+      body.dark-mode .invb-tabela-wrap { background:#1E293B !important; border-color:#334155 !important; }
+      @media (max-width:639px){
+        .invb-metricas { gap:10px; }
+        .invb-metricas .invb-vol { display:none; }
+        .invb-tabela-wrap { display:none; }
+        .invb-lotes-cards { display:flex; }
+      }
+    </style>
+
+    <div id="inv-benef-vazio" class="panel" style="display:none;text-align:center;padding:48px 24px;color:var(--texto2);">
       <div style="font-size:2rem;margin-bottom:12px;">⏳</div>
-      <div style="font-size:1rem;font-weight:700;color:var(--texto);margin-bottom:6px;">Aguardando a planilha de Beneficiados do Inverno</div>
-      <div style="font-size:0.85rem;max-width:480px;margin:0 auto;">Essa aba vai mostrar os lotes beneficiados por cultura assim que a planilha própria do Inverno (separada da de soja) estiver pronta e configurada na automação.</div>
+      <div style="font-size:1rem;font-weight:700;color:var(--texto);margin-bottom:6px;">Nenhum lote beneficiado do Inverno ainda</div>
+      <div style="font-size:0.85rem;max-width:480px;margin:0 auto;">Os lotes aparecem aqui assim que forem lançados na planilha de Beneficiados do Inverno e a sincronização rodar.</div>
+    </div>
+
+    <div id="inv-benef-conteudo">
+      <!-- KPIs -->
+      <div id="inv-benef-kpis"></div>
+
+      <!-- Filtros -->
+      <div class="filter-bar" style="margin-bottom:14px;">
+        <input type="text" id="inv-benef-search" placeholder="🔍 Buscar cultivar ou lote..." oninput="filterInvernoBenef()"
+          style="flex:1;min-width:0;">
+        <select id="inv-benef-cultura" onchange="filterInvernoBenef()"><option value="">Todas as culturas</option></select>
+        <select id="inv-benef-local" onchange="filterInvernoBenef()"><option value="">Todas as localizações</option></select>
+        <div class="count-badge">Exibindo <span id="inv-benef-count" style="color:var(--accent);font-weight:700;">—</span> cultivares</div>
+      </div>
+
+      <!-- Lista expansível -->
+      <div id="inv-benef-list" style="display:flex;flex-direction:column;gap:8px;"></div>
     </div>
   </div>
 
@@ -2674,6 +2716,179 @@ function showPageInverno(name) {
   if (name === 'cultivares') buildInvernoCultivares();
   if (name === 'comprados') buildInvernoComprados();
   if (name === 'plantio') buildInvernoPlantio();
+  if (name === 'beneficiamento') buildInvernoBenef();
+}
+
+// -------- BENEFICIAMENTO (Inverno) --------
+// Fonte: BENEF_INVERNO, gravado pelo sincronizador do computador da empresa
+// (scripts/sincronizar_benef_inverno.py) a partir da planilha
+// "LOTES BENEFICIADOS INVERNO 26-26.xlsx". Peneira do Inverno é "S/P":
+// aqui não existe divisão P1/P2.
+let invBenefBuilt = false;
+
+function invBenefCultura(c) {
+  // 1º o cadastro CV_META_INVERNO (pelo cultivar); senão o que veio da planilha
+  const meta = CV_META_INVERNO[c.cultivar];
+  return (meta && meta.cultura) || c.cultura || 'Sem cultura';
+}
+
+function invBenefFmtKg(kg) {
+  return (kg || 0) >= 1000 ? ((kg / 1000).toFixed(1).replace('.', ',') + ' t') : ((kg || 0).toLocaleString('pt-BR') + ' kg');
+}
+
+function invBenefEsc(v) {
+  return v == null ? '' : String(v).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+
+function buildInvernoBenef() {
+  const dados = Array.isArray(BENEF_INVERNO) ? BENEF_INVERNO : [];
+  document.getElementById('inv-benef-vazio').style.display = dados.length ? 'none' : 'block';
+  document.getElementById('inv-benef-conteudo').style.display = dados.length ? '' : 'none';
+  if (!dados.length || invBenefBuilt) { if (dados.length) filterInvernoBenef(); return; }
+  invBenefBuilt = true;
+  const culturas = [...new Set(dados.map(invBenefCultura))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const locais = [...new Set(dados.flatMap(c => c.localizacoes || []))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  document.getElementById('inv-benef-cultura').innerHTML = '<option value="">Todas as culturas</option>' +
+    culturas.map(c => `<option value="${invBenefEsc(c)}">${invBenefEsc(c)}</option>`).join('');
+  document.getElementById('inv-benef-local').innerHTML = '<option value="">Todas as localizações</option>' +
+    locais.map(l => `<option value="${invBenefEsc(l)}">${invBenefEsc(l)}</option>`).join('');
+  filterInvernoBenef();
+}
+
+function filterInvernoBenef() {
+  const dados = Array.isArray(BENEF_INVERNO) ? BENEF_INVERNO : [];
+  const q = (document.getElementById('inv-benef-search').value || '').toLowerCase().trim();
+  const cult = document.getElementById('inv-benef-cultura').value;
+  const loc = document.getElementById('inv-benef-local').value;
+
+  // filtra lote a lote (a busca pode achar um lote específico) e remonta os totais
+  const lista = dados.map(c => {
+    const cultura = invBenefCultura(c);
+    if (cult && cultura !== cult) return null;
+    const cvBate = !q || c.cultivar.toLowerCase().includes(q) || cultura.toLowerCase().includes(q);
+    const detail = (c.detail || []).filter(d =>
+      (!loc || d.localizacao === loc) &&
+      (cvBate || String(d.lote || '').toLowerCase().includes(q)));
+    if (!detail.length) return null;
+    return {
+      cultivar: c.cultivar, cultura, detail,
+      bags: detail.reduce((s, d) => s + (d.bags || 0), 0),
+      kg: detail.reduce((s, d) => s + (d.kg || 0), 0),
+      lotes: new Set(detail.map(d => d.lote)).size,
+      locais: [...new Set(detail.map(d => d.localizacao).filter(Boolean))],
+    };
+  }).filter(Boolean);
+
+  lista.sort((a, b) => a.cultura.localeCompare(b.cultura, 'pt-BR') || b.bags - a.bags);
+
+  const totBags = lista.reduce((s, c) => s + c.bags, 0);
+  const totKg = lista.reduce((s, c) => s + c.kg, 0);
+  const totLotes = lista.reduce((s, c) => s + c.lotes, 0);
+  const nCult = new Set(lista.map(c => c.cultura)).size;
+  const filtro = (cult || loc || q) ? ' · filtrado' : '';
+
+  document.getElementById('inv-benef-count').textContent = lista.length;
+  document.getElementById('inv-benef-kpis').innerHTML = `
+    <div class="kpi accent">
+      <div class="label">Bags Beneficiadas</div>
+      <div class="value">${totBags.toLocaleString('pt-BR')}</div>
+      <div class="sub">bags${filtro}</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Volume Beneficiado</div>
+      <div class="value">${(totKg / 1000).toFixed(1).replace('.', ',')} t</div>
+      <div class="sub">${totKg.toLocaleString('pt-BR')} kg</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Lotes Beneficiados</div>
+      <div class="value">${totLotes.toLocaleString('pt-BR')}</div>
+      <div class="sub">lotes${filtro}</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Cultivares</div>
+      <div class="value">${lista.length}</div>
+      <div class="sub">${nCult} cultura${nCult === 1 ? '' : 's'}</div>
+    </div>`;
+
+  if (!lista.length) {
+    document.getElementById('inv-benef-list').innerHTML =
+      '<div class="panel" style="text-align:center;padding:32px;color:var(--texto2);">Nenhum lote encontrado com os filtros selecionados.</div>';
+    return;
+  }
+
+  const metr = (rot, val, cls) => `<div style="text-align:center;"${cls ? ` class="${cls}"` : ''}>
+      <div style="font-size:0.6rem;color:var(--texto2);text-transform:uppercase;letter-spacing:0.5px;">${rot}</div>
+      <div style="font-size:0.9rem;font-weight:800;color:var(--texto);">${val}</div></div>`;
+
+  document.getElementById('inv-benef-list').innerHTML = lista.map((c, i) => {
+    const cor = CULTURAS_INVERNO_COLORS[c.cultura] || '#64748B';
+    const linhas = c.detail.map(d => `
+      <tr>
+        <td>${invBenefEsc(d.categoria) || '—'}</td>
+        <td style="font-weight:700;">${invBenefEsc(d.lote)}</td>
+        <td>${invBenefEsc(d.peneira) || '—'}</td>
+        <td>${invBenefEsc(d.embalagem) || '—'}</td>
+        <td class="num">${(d.bags || 0).toLocaleString('pt-BR')}</td>
+        <td class="num">${d.peso_bag != null ? d.peso_bag.toLocaleString('pt-BR') + ' kg' : '—'}</td>
+        <td class="num">${(d.kg || 0).toLocaleString('pt-BR')}</td>
+        <td>${invBenefEsc(d.localizacao) || '—'}</td>
+        <td class="obs">${invBenefEsc(d.observacoes) || ''}</td>
+      </tr>`).join('');
+    const cards = c.detail.map(d => `
+      <div class="invb-lote-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+          <b style="font-size:0.88rem;color:var(--texto);">${invBenefEsc(d.lote)}</b>
+          <span style="font-size:0.62rem;font-weight:700;color:var(--texto2);">${invBenefEsc(d.categoria) || ''} · ${invBenefEsc(d.peneira) || ''}</span>
+        </div>
+        <div class="lin"><span>${invBenefEsc(d.embalagem) || '—'} · ${d.peso_bag != null ? d.peso_bag.toLocaleString('pt-BR') + ' kg/bag' : '—'}</span><b>${(d.bags || 0).toLocaleString('pt-BR')} bags</b></div>
+        <div class="lin"><span>${invBenefEsc(d.localizacao) || '—'}</span><b>${(d.kg || 0).toLocaleString('pt-BR')} kg</b></div>
+        ${d.observacoes ? `<div class="lin"><span>Obs.: ${invBenefEsc(d.observacoes)}</span></div>` : ''}
+      </div>`).join('');
+
+    return `
+    <div class="panel" style="overflow:hidden;">
+      <div onclick="toggleInvernoBenef(${i})"
+        style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;cursor:pointer;gap:12px;transition:background 0.15s;user-select:none;"
+        onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:800;font-size:1rem;color:var(--texto);">${invBenefEsc(c.cultivar)}</div>
+          <div style="display:flex;gap:5px;margin-top:5px;flex-wrap:wrap;">
+            <span style="font-size:0.6rem;background:${cor}22;color:${cor};border:1px solid ${cor}55;border-radius:4px;padding:2px 7px;font-weight:700;">${invBenefEsc(c.cultura)}</span>
+            ${c.locais.map(l => `<span style="font-size:0.6rem;background:#EFF6FF;color:#2563EB;border:1px solid #BFDBFE;border-radius:4px;padding:2px 7px;font-weight:700;">${invBenefEsc(l)}</span>`).join('')}
+          </div>
+        </div>
+        <div class="invb-metricas">
+          ${metr('Lotes', c.lotes.toLocaleString('pt-BR'))}
+          ${metr('Bags', c.bags.toLocaleString('pt-BR'))}
+          ${metr('Volume', invBenefFmtKg(c.kg), 'invb-vol')}
+          <div id="inv-benef-icon-${i}" style="color:var(--accent);width:20px;text-align:center;flex-shrink:0;transition:transform 0.2s;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+          </div>
+        </div>
+      </div>
+      <div id="inv-benef-detail-${i}" style="display:none;border-top:1px solid var(--borda);background:var(--bg3);padding:16px;">
+        <div style="font-size:0.72rem;font-weight:700;color:var(--texto2);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">
+          Lotes beneficiados · ${c.lotes} lote${c.lotes === 1 ? '' : 's'} · ${c.bags.toLocaleString('pt-BR')} bags · ${c.kg.toLocaleString('pt-BR')} kg
+        </div>
+        <div class="invb-tabela-wrap" style="overflow-x:auto;background:#fff;border:1px solid var(--borda);border-radius:8px;">
+          <table class="invb-tabela">
+            <thead><tr><th>Categoria</th><th>Lote</th><th>Peneira</th><th>Embalagem</th><th class="num">Nº BB</th><th class="num">Peso/bag</th><th class="num">Total kg</th><th>Localização</th><th>Observações</th></tr></thead>
+            <tbody>${linhas}</tbody>
+            <tfoot><tr><td colspan="4">Total</td><td class="num">${c.bags.toLocaleString('pt-BR')}</td><td></td><td class="num">${c.kg.toLocaleString('pt-BR')}</td><td colspan="2"></td></tr></tfoot>
+          </table>
+        </div>
+        <div class="invb-lotes-cards">${cards}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleInvernoBenef(i) {
+  const det = document.getElementById(`inv-benef-detail-${i}`);
+  const ico = document.getElementById(`inv-benef-icon-${i}`);
+  const abrir = det.style.display === 'none';
+  det.style.display = abrir ? 'block' : 'none';
+  ico.style.transform = abrir ? 'rotate(90deg)' : 'rotate(0deg)';
 }
 
 function culturaNomeInverno(cv) {
