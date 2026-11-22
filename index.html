@@ -1560,15 +1560,15 @@ html {
   <div class="header-stats">
     <div class="h-stat">
       <div class="val" id="h-kg" style="color:#38BDF8;">—</div>
-      <div class="lbl">Total KG</div>
+      <div class="lbl" id="h-kg-lbl">Total KG</div>
     </div>
     <div class="h-stat">
       <div class="val" id="h-lotes" style="color:#F1F5F9;">—</div>
-      <div class="lbl">Lotes</div>
+      <div class="lbl" id="h-lotes-lbl">Lotes</div>
     </div>
     <div class="h-stat">
       <div class="val" id="h-cultivares" style="color:#F1F5F9;">—</div>
-      <div class="lbl">Cultivares</div>
+      <div class="lbl" id="h-cultivares-lbl">Cultivares</div>
     </div>
     <div class="h-stat">
       <div class="val" id="h-data" style="color:#F1F5F9;font-size:0.9rem;">—</div>
@@ -2330,6 +2330,22 @@ html {
         </div>
         <div id="central-mais" class="cl-mais" style="display:none;"></div>
       </div>
+      <!-- PGW · Prestação de serviço: só aparece na busca, só na tela (não vem de lots/), fora dos contadores -->
+      <div id="central-pgw" style="display:none;margin-top:14px;">
+        <div class="inv-aviso" style="background:#EFF6FF;border-color:#BFDBFE;color:#1E3A8A;margin-bottom:8px;">
+          <b>PGW · Prestação de serviço</b> — <span id="central-pgw-n"></span>. Lotes de cliente: aparecem só na busca e
+          não entram nos contadores, nos totais nem no resumo por cultivar da Central.
+        </div>
+        <div class="panel">
+          <div class="lotes-table-wrap">
+            <table>
+              <thead><tr><th>Lote</th><th>Empresa</th><th>Origem</th><th>Cultura</th><th>Cultivar</th>
+                <th class="num">Bags</th><th class="num">kg do lote</th><th>Qualidade</th><th class="col-hide-mobile">Beneficiamento</th></tr></thead>
+              <tbody id="central-pgw-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>
     <div id="central-vista-cultivar" style="display:none;">
       <div style="font-size:0.78rem;color:var(--texto2);margin:0 0 10px 2px;">Clique em uma cultivar para ver os lotes dela na tabela. Considera a safra escolhida no filtro.</div>
@@ -2467,6 +2483,7 @@ html {
     <div class="inv-aviso" style="background:#EFF6FF;border-color:#BFDBFE;color:#1E3A8A;">
       <b>PGW · Prestação de serviço.</b> Lotes de cliente, beneficiados/analisados pela Sementes com Vigor.
       Ficam fora dos totais da produção própria e de Lotes Comprados.
+      Os números do cabeçalho (Total KG, Lotes, Cultivares) são da <b>Produção própria</b>; os cartões abaixo mostram só a PGW.
     </div>
     <div id="inv-pgw-kpis" class="kpi-grid inv-kpi-grid" style="margin-bottom:12px;"></div>
     <div class="filter-bar" style="margin-bottom:8px;">
@@ -2567,6 +2584,30 @@ html {
     </div>
 
     <div id="inv-benef-conteudo">
+      <style>
+        .invb-visao { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
+        .invb-visao button { font:inherit; font-size:0.8rem; font-weight:700; padding:7px 14px; border-radius:999px; cursor:pointer;
+          border:1px solid var(--borda); background:var(--bg2, #fff); color:var(--texto2); }
+        .invb-visao button[aria-pressed="true"] { background:#2563EB; border-color:#2563EB; color:#fff; }
+        .invb-visao button small { font-weight:600; opacity:.85; margin-left:4px; }
+        .invb-conferir { border:1px solid #F59E0B; background:#FFFBEB; border-radius:10px; margin-bottom:14px; }
+        .invb-conferir > summary { cursor:pointer; padding:10px 14px; font-size:0.85rem; color:#92400E; list-style:none; display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+        .invb-conferir > summary::-webkit-details-marker { display:none; }
+        .invb-conferir .invb-tabela { background:#fff; }
+        .invb-conferir .invb-motivo { color:#92400E; font-weight:600; white-space:normal; min-width:200px; }
+        body.dark-mode .invb-conferir { background:#2A2111; border-color:#92400E; }
+        body.dark-mode .invb-conferir > summary { color:#FCD34D; }
+      </style>
+      <!-- Origem do lote: Produção própria (padrão) × PGW · Prestação de serviço -->
+      <div class="invb-visao" role="group" aria-label="Origem dos lotes beneficiados">
+        <button type="button" id="invb-visao-propria" aria-pressed="true" onclick="invBenefTrocarVisao('propria')">Produção própria<small id="invb-visao-propria-n"></small></button>
+        <button type="button" id="invb-visao-pgw" aria-pressed="false" onclick="invBenefTrocarVisao('pgw')">PGW · Prestação de serviço<small id="invb-visao-pgw-n"></small></button>
+      </div>
+      <div id="invb-visao-aviso" class="inv-aviso" style="display:none;margin-bottom:12px;background:#EFF6FF;border-color:#BFDBFE;color:#1E3A8A;">
+        <b>PGW · Prestação de serviço.</b> Lotes de cliente beneficiados pela Sementes com Vigor, identificados pelo vínculo com a aba PGW das análises. Ficam fora dos totais da produção própria.
+      </div>
+      <!-- Origem a conferir: bloco separado, fora dos dois subtotais -->
+      <div id="invb-conferir"></div>
       <!-- KPIs -->
       <div id="inv-benef-kpis"></div>
 
@@ -2706,6 +2747,7 @@ function showPage(name) {
   // só as abas/páginas do Verão: antes isto desmarcava também a Visão Geral do
   // Inverno, que abria em branco ao trocar de safra
   const raizVerao = document.getElementById('safra-verao') || document;
+  if (typeof marcarHeaderProducaoPropria === 'function') marcarHeaderProducaoPropria(false);
   raizVerao.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   raizVerao.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('page-' + name).classList.add('active');
@@ -2776,6 +2818,7 @@ function trocarSafra(safra) {
   }
   atualizarRodapeSafra(safra);
   atualizarHeaderSafra(safra);
+  if (safra === 'verao') marcarHeaderProducaoPropria(false);
 }
 
 // rodapé de parâmetros: mostra só os critérios da safra visível
@@ -2803,6 +2846,15 @@ function showPageInverno(name, aba) {
   if (name === 'plantio') buildInvernoPlantio();
   if (name === 'beneficiamento') buildInvernoBenef();
   if (name === 'pgw') buildInvernoServico();
+  marcarHeaderProducaoPropria(name === 'pgw');
+}
+
+// Na aba PGW o cabeçalho continua mostrando só a produção própria: deixa isso escrito.
+function marcarHeaderProducaoPropria(ligar) {
+  const el = document.getElementById('h-kg-lbl');
+  if (el) el.textContent = ligar ? 'KG · Produção própria' : 'Total KG';
+  const stats = document.querySelector('.header-stats');
+  if (stats) stats.title = ligar ? 'Totais da produção própria do Inverno 26/26 — os lotes da PGW (prestação de serviço) não entram aqui.' : '';
 }
 
 // -------- BENEFICIAMENTO (Inverno) --------
@@ -2826,6 +2878,94 @@ function invBenefEsc(v) {
   return v == null ? '' : String(v).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 }
 
+// ---- Origem de cada linha do Beneficiamento: 'propria' | 'pgw' | 'conferir' ----
+// A planilha de Beneficiados não traz empresa/origem. A origem vem:
+//   1) da origem registrada na linha, se um dia existir (d.origem / d.empresa);
+//   2) do vínculo confirmado com os registros: lote próprio (LOTS_INVERNO /
+//      LOTES_COMPRADOS_INVERNO, por Cultura + Lote) ou lote da aba PGW
+//      (LOTS_SERVICO_INVERNO: Cultura + Lote; sem cultura na PGW, Lote + Cultivar).
+// Sem vínculo único e coerente → 'conferir' (fica fora dos dois subtotais).
+// Só leitura: não grava nada.
+let invBenefVisao = 'propria';
+let _invOrigemIdx = null;
+function invNormTxt(v) { return String(v == null ? '' : v).normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toUpperCase().replace(/\s+/g, ' '); }
+function invIndiceOrigem() {
+  if (_invOrigemIdx) return _invOrigemIdx;
+  const proprios = new Set();
+  (typeof LOTS_INVERNO !== 'undefined' ? LOTS_INVERNO : []).forEach(l => { if (l.lote) proprios.add(invChaveLote(l.cultura, l.lote)); });
+  (typeof LOTES_COMPRADOS_INVERNO !== 'undefined' ? LOTES_COMPRADOS_INVERNO : []).forEach(l => {
+    const lote = l.lote || l.lote_origem; if (lote) proprios.add(invChaveLote(l.cultura, lote));
+  });
+  const pgwPorLote = {};
+  invServico().forEach(l => { if (!l.lote) return; const k = invNormTxt(l.lote); (pgwPorLote[k] = pgwPorLote[k] || []).push(l); });
+  const proprioPorLote = new Set([...proprios].map(k => k.split('|')[1]));
+  return (_invOrigemIdx = { proprios, proprioPorLote, pgwPorLote });
+}
+function invOrigemBenef(cultivar, cultura, d) {
+  const idx = invIndiceOrigem();
+  const lote = invNormTxt(d.lote);
+  const proprio = idx.proprios.has(invChaveLote(cultura, d.lote));
+  const proprioOutraCultura = !proprio && idx.proprioPorLote.has(lote);
+  const cand = idx.pgwPorLote[lote] || [];
+  const bate = cand.filter(p => p.cultura ? invNormTxt(p.cultura) === invNormTxt(cultura) : invNormTxt(p.cultivar) === invNormTxt(cultivar));
+  const reg = invNormTxt(d.origem || d.empresa || '');
+  const regPgw = reg ? /PGW|PRESTA/.test(reg) : null;
+  if (proprio && cand.length) return { origem: 'conferir', motivo: 'Código existe na produção própria e na aba PGW' };
+  if (bate.length === 1) {
+    if (regPgw === false) return { origem: 'conferir', motivo: 'Origem registrada (' + (d.origem || d.empresa) + ') diferente do vínculo com a PGW' };
+    return { origem: 'pgw', pgw: bate[0] };
+  }
+  if (bate.length > 1) return { origem: 'conferir', motivo: 'Lote aparece mais de uma vez na aba PGW' };
+  if (cand.length) return { origem: 'conferir', motivo: 'Lote está na aba PGW com ' + (cand[0].cultura ? 'cultura' : 'cultivar') + ' diferente (' + (cand[0].cultura || cand[0].cultivar || '—') + ')' };
+  if (proprio) {
+    if (regPgw === true) return { origem: 'conferir', motivo: 'Origem registrada como PGW, mas o lote só existe na produção própria' };
+    return { origem: 'propria' };
+  }
+  if (proprioOutraCultura) return { origem: 'conferir', motivo: 'Lote existe na produção própria com outra cultura' };
+  return { origem: 'conferir', motivo: 'Sem análise registrada (nem na produção própria nem na aba PGW)' };
+}
+// todas as linhas do Beneficiamento já classificadas (cache por carga de dados)
+let _invBenefLinhas = null;
+function invBenefLinhas() {
+  if (_invBenefLinhas) return _invBenefLinhas;
+  const dados = Array.isArray(BENEF_INVERNO) ? BENEF_INVERNO : [];
+  _invBenefLinhas = [];
+  dados.forEach(c => {
+    const cultura = invBenefCultura(c);
+    (c.detail || []).forEach(d => _invBenefLinhas.push(Object.assign({ c, d, cultivar: c.cultivar, cultura }, invOrigemBenef(c.cultivar, cultura, d))));
+  });
+  return _invBenefLinhas;
+}
+// linhas do Beneficiamento vinculadas a um lote da PGW (para a Central de Lotes)
+function invBenefDoLotePgw(lp) {
+  return invBenefLinhas().filter(x => x.origem === 'pgw' && x.pgw === lp).map(x => x.d);
+}
+function invBenefTrocarVisao(v) {
+  invBenefVisao = v;
+  ['propria', 'pgw'].forEach(k => document.getElementById('invb-visao-' + k).setAttribute('aria-pressed', String(k === v)));
+  document.getElementById('invb-visao-aviso').style.display = v === 'pgw' ? '' : 'none';
+  filterInvernoBenef();
+}
+function renderInvBenefConferir(linhas) {
+  const el = document.getElementById('invb-conferir');
+  if (!linhas.length) { el.innerHTML = ''; return; }
+  const aberto = el.querySelector('details') && el.querySelector('details').open;
+  const bags = linhas.reduce((s, x) => s + (x.d.bags || 0), 0);
+  const kg = linhas.reduce((s, x) => s + (x.d.kg || 0), 0);
+  const lotes = new Set(linhas.map(x => invNormTxt(x.d.lote))).size;
+  const e = invBenefEsc;
+  el.innerHTML = `<details class="invb-conferir"${aberto ? ' open' : ''}>
+    <summary><b>⚠ Origem a conferir</b> <span>${lotes} lote${lotes === 1 ? '' : 's'} · ${bags.toLocaleString('pt-BR')} bags · ${kg.toLocaleString('pt-BR')} kg</span>
+      <span style="font-weight:400;">— fora dos subtotais de Produção própria e PGW até a origem ser confirmada. Clique para ver.</span></summary>
+    <div style="overflow-x:auto;padding:0 14px 14px;">
+      <table class="invb-tabela"><thead><tr><th>Lote</th><th>Cultivar</th><th>Cultura</th><th class="num">Nº BB</th><th class="num">Total kg</th><th>Localização</th><th>Por que conferir</th></tr></thead>
+      <tbody>${linhas.map(x => `<tr><td style="font-weight:700;">${e(x.d.lote)}</td><td>${e(x.cultivar)}</td><td>${e(x.cultura)}</td>
+        <td class="num">${(x.d.bags || 0).toLocaleString('pt-BR')}</td><td class="num">${(x.d.kg || 0).toLocaleString('pt-BR')}</td>
+        <td>${e(x.d.localizacao) || '—'}</td><td class="invb-motivo">${e(x.motivo)}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td colspan="3">Total a conferir</td><td class="num">${bags.toLocaleString('pt-BR')}</td><td class="num">${kg.toLocaleString('pt-BR')}</td><td colspan="2"></td></tr></tfoot></table>
+    </div></details>`;
+}
+
 function buildInvernoBenef() {
   const dados = Array.isArray(BENEF_INVERNO) ? BENEF_INVERNO : [];
   document.getElementById('inv-benef-vazio').style.display = dados.length ? 'none' : 'block';
@@ -2847,14 +2987,24 @@ function filterInvernoBenef() {
   const cult = document.getElementById('inv-benef-cultura').value;
   const loc = document.getElementById('inv-benef-local').value;
 
+  // origem de cada linha: a visão escolhida (própria ou PGW) e o bloco "a conferir"
+  const todas = invBenefLinhas();
+  const passa = x => {
+    if (cult && x.cultura !== cult) return false;
+    if (loc && x.d.localizacao !== loc) return false;
+    return !q || String(x.cultivar || '').toLowerCase().includes(q) || x.cultura.toLowerCase().includes(q) || String(x.d.lote || '').toLowerCase().includes(q);
+  };
+  const contar = o => { const ls = todas.filter(x => x.origem === o); return { lotes: new Set(ls.map(x => invNormTxt(x.d.lote))).size, kg: ls.reduce((s, x) => s + (x.d.kg || 0), 0) }; };
+  const np = contar('propria'), ng = contar('pgw');
+  document.getElementById('invb-visao-propria-n').textContent = '· ' + np.lotes + ' lotes · ' + invBenefFmtKg(np.kg);
+  document.getElementById('invb-visao-pgw-n').textContent = '· ' + ng.lotes + ' lotes · ' + invBenefFmtKg(ng.kg);
+  renderInvBenefConferir(todas.filter(x => x.origem === 'conferir' && passa(x)));
+  const daVisao = new Set(todas.filter(x => x.origem === invBenefVisao && passa(x)).map(x => x.d));
+
   // filtra lote a lote (a busca pode achar um lote específico) e remonta os totais
   const lista = dados.map(c => {
     const cultura = invBenefCultura(c);
-    if (cult && cultura !== cult) return null;
-    const cvBate = !q || c.cultivar.toLowerCase().includes(q) || cultura.toLowerCase().includes(q);
-    const detail = (c.detail || []).filter(d =>
-      (!loc || d.localizacao === loc) &&
-      (cvBate || String(d.lote || '').toLowerCase().includes(q)));
+    const detail = (c.detail || []).filter(d => daVisao.has(d));
     if (!detail.length) return null;
     return {
       cultivar: c.cultivar, cultura, detail,
@@ -2872,18 +3022,19 @@ function filterInvernoBenef() {
   const totLotes = lista.reduce((s, c) => s + c.lotes, 0);
   const nCult = new Set(lista.map(c => c.cultura)).size;
   const filtro = (cult || loc || q) ? ' · filtrado' : '';
+  const rotOrigem = invBenefVisao === 'pgw' ? 'PGW · Prestação de serviço' : 'Produção própria';
 
   document.getElementById('inv-benef-count').textContent = lista.length;
   document.getElementById('inv-benef-kpis').innerHTML = `
     <div class="kpi accent">
       <div class="label">Bags Beneficiadas</div>
       <div class="value">${totBags.toLocaleString('pt-BR')}</div>
-      <div class="sub">bags${filtro}</div>
+      <div class="sub">bags · ${rotOrigem}${filtro}</div>
     </div>
     <div class="kpi">
       <div class="label">Volume Beneficiado</div>
       <div class="value">${(totKg / 1000).toFixed(1).replace('.', ',')} t</div>
-      <div class="sub">${totKg.toLocaleString('pt-BR')} kg</div>
+      <div class="sub">${totKg.toLocaleString('pt-BR')} kg · ${rotOrigem}</div>
     </div>
     <div class="kpi">
       <div class="label">Lotes Beneficiados</div>
@@ -2898,7 +3049,8 @@ function filterInvernoBenef() {
 
   if (!lista.length) {
     document.getElementById('inv-benef-list').innerHTML =
-      '<div class="panel" style="text-align:center;padding:32px;color:var(--texto2);">Nenhum lote encontrado com os filtros selecionados.</div>';
+      '<div class="panel" style="text-align:center;padding:32px;color:var(--texto2);">' +
+      (invBenefVisao === 'pgw' && !ng.lotes ? 'Nenhum lote beneficiado vinculado à aba PGW ainda.' : 'Nenhum lote encontrado com os filtros selecionados.') + '</div>';
     return;
   }
 
@@ -6793,6 +6945,7 @@ function filtrarCentral() {
   chip.innerHTML = fh ? '· filtro da Início: <b>' + cEsc(fh.rotulo) + '</b> <button type="button" class="cl-btn" style="padding:2px 8px;margin-left:4px;" onclick="centralFiltroHome=null;filtrarCentral();">✕</button>' : '';
   marcarCardCentral();
   renderLinhasCentral();
+  renderCentralPgw();
   if (document.getElementById('central-vista-cultivar').style.display !== 'none') renderResumoCultivar();
 }
 
@@ -6986,6 +7139,80 @@ document.getElementById('central-cv-tbody').addEventListener('click', ev => {
 // ---------- detalhe do lote (montado só quando abre) ----------
 // Monta as seções do detalhe do lote. Usado pelo modal e pelo relatório de
 // impressão, para os dois mostrarem exatamente os mesmos campos e nomes.
+// ---------- PGW · Prestação de serviço na Central (só na tela) ----------
+// Fonte: LOTS_SERVICO_INVERNO (já carregado no login). Nada é lido nem gravado
+// em lots/; os lotes aparecem só quando há busca e nunca entram em
+// CENTRAL, nos contadores, nos cartões ou no resumo por cultivar.
+let centralPgwLista = [];
+function centralPgwDados() {
+  return (typeof invServico === 'function' ? invServico() : []).map(l => {
+    if (!l._buscaPgw) Object.defineProperty(l, '_buscaPgw', { value: cNorm([l.lote, l.cultivar, l.cultura, l.empresa, l.origem, 'PGW PRESTACAO DE SERVICO INV2626'].join(' | ')), enumerable: false, configurable: true });
+    return l;
+  });
+}
+function renderCentralPgw() {
+  const box = document.getElementById('central-pgw'); if (!box) return;
+  const termos = cNorm(document.getElementById('central-search').value.trim()).split(/\s+/).filter(Boolean);
+  const val = id => document.getElementById(id).value;
+  // filtros que só existem para lotes da Central (TSI, RASTREL, situação...) não se aplicam à PGW: com eles ligados, a PGW some
+  const outros = ['central-cultivar','central-situacao','central-qualidade','central-tsi','central-rastrel','central-div'].some(id => val(id)) ||
+    document.getElementById('central-so-alerta').checked || document.getElementById('central-multi').checked ||
+    (typeof centralFiltroHome !== 'undefined' && centralFiltroHome);
+  const sf = val('central-safra'), cu = val('central-cultura');
+  if (!termos.length || outros || (sf && sf !== 'INV2626')) { box.style.display = 'none'; centralPgwLista = []; return; }
+  centralPgwLista = centralPgwDados().filter(l => termos.every(t => l._buscaPgw.includes(t)) && (!cu || cNorm(l.cultura) === cNorm(cu)))
+    .sort((a, b) => String(a.lote).localeCompare(String(b.lote), 'pt-BR', { numeric: true }));
+  if (!centralPgwLista.length) { box.style.display = 'none'; return; }
+  box.style.display = '';
+  if (!centralLista.length) document.getElementById('central-tbody').innerHTML = '<tr><td colspan="11" style="padding:18px;color:var(--texto2);">Nenhum lote da produção própria com esses filtros. Veja abaixo os lotes da PGW · Prestação de serviço.</td></tr>';
+  const n = centralPgwLista.length;
+  document.getElementById('central-pgw-n').textContent = n + ' lote' + (n === 1 ? '' : 's') + ' encontrado' + (n === 1 ? '' : 's');
+  document.getElementById('central-pgw-tbody').innerHTML = centralPgwLista.map((l, i) => {
+    const benef = invBenefDoLotePgw(l);
+    const bkg = benef.reduce((s, d) => s + (d.kg || 0), 0);
+    return '<tr class="cl-row" data-pgw="' + i + '" style="cursor:pointer;">' +
+      '<td style="font-weight:700;">' + cEsc(l.lote) + ' <span class="rank-badge" style="background:#EFF6FF;color:#1E3A8A;border:1px solid #BFDBFE;">PGW · Prestação de serviço</span></td>' +
+      '<td>' + cEsc(l.empresa || 'PGW') + '</td><td>' + cEsc(l.origem || 'Prestação de serviço') + '</td>' +
+      '<td>' + (l.cultura ? cEsc(l.cultura) : '<span class="inv-selo pend">a confirmar</span>') + '</td><td>' + cEsc(l.cultivar || '—') + '</td>' +
+      '<td class="num">' + (l.bags != null ? cNum(l.bags, 0) : '—') + '</td><td class="num">' + (l.kg != null ? cNum(l.kg, 0) : '—') + '</td>' +
+      '<td>' + invSelo(l) + '</td>' +
+      '<td class="col-hide-mobile">' + (benef.length ? cNum(benef.reduce((s, d) => s + (d.bags || 0), 0), 0) + ' bags · ' + cNum(bkg, 0) + ' kg' : '<span style="color:var(--texto2);">sem vínculo</span>') + '</td></tr>';
+  }).join('');
+}
+document.getElementById('central-pgw-tbody').addEventListener('click', ev => {
+  const tr = ev.target.closest('tr[data-pgw]'); if (!tr) return;
+  abrirLotePgwCentral(centralPgwLista[Number(tr.dataset.pgw)]);
+});
+function abrirLotePgwCentral(l) {
+  if (!l) return;
+  const kv = (k, v) => '<div><div class="k">' + k + '</div><div class="v">' + (v == null || v === '' ? '—' : v) + '</div></div>';
+  const benef = invBenefDoLotePgw(l);
+  const bBags = benef.reduce((s, d) => s + (d.bags || 0), 0), bKg = benef.reduce((s, d) => s + (d.kg || 0), 0);
+  const uniq = c => [...new Set(benef.map(d => d[c]).filter(Boolean))].map(cEsc).join(', ');
+  const secB = benef.length ? '<div class="cl-kv">' + kv('Bags beneficiadas', cNum(bBags, 0)) + kv('kg beneficiados', cNum(bKg, 0)) +
+      kv('Embalagem', uniq('embalagem')) + kv('Peneira', uniq('peneira')) + kv('Localização', uniq('localizacao')) + kv('Observações', uniq('observacoes')) + '</div>' +
+      ((l.kg != null && Math.abs(bKg - l.kg) > 0.5) ? '<div class="cl-al cl-al-A" style="margin-top:8px;"><b>AVISO</b> · kg do Beneficiamento (' + cNum(bKg, 0) + ') diferente do kg da aba PGW (' + cNum(l.kg, 0) + ').</div>' : '')
+    : '<div style="color:var(--texto2);font-size:0.85rem;">Nenhuma linha do Beneficiamento vinculada a este lote (ou a origem está em conferência no Beneficiamento).</div>';
+  document.getElementById('cl-box').innerHTML =
+    '<div class="cl-head"><div style="min-width:0;"><div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:.6px;color:var(--texto2);font-weight:700;">Lote · PGW · Prestação de serviço</div>' +
+      '<h2 id="cl-titulo">' + cEsc(l.lote) + '</h2><div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">' + invSelo(l) +
+      '<span class="cl-mono" style="color:var(--texto2);">Inverno 26/26 · fora dos totais da produção própria</span></div></div>' +
+      '<button class="cl-x" type="button" onclick="fecharLoteCentral()" aria-label="Fechar">✕</button></div>' +
+    '<div class="cl-body">' +
+      '<div class="cl-sec"><h3>Identificação</h3><div class="cl-kv">' + kv('Empresa', cEsc(l.empresa || 'PGW')) + kv('Origem', cEsc(l.origem || 'Prestação de serviço')) +
+        kv('Safra', 'Inverno 26/26') + kv('Cultura', l.cultura ? cEsc(l.cultura) : 'a confirmar') + kv('Cultivar', cEsc(l.cultivar)) + kv('Categoria', cEsc(l.categoria)) + '</div></div>' +
+      '<div class="cl-sec"><h3>Qualidade</h3><div class="cl-kv">' + kv('Status', invSelo(l)) + kv('Germinação', l.germinacao != null ? cNum(l.germinacao) + '%' : 'aguardando') +
+        kv('Bags', l.bags != null ? cNum(l.bags, 0) : '—') + kv('kg do lote', l.kg != null ? cNum(l.kg, 0) : '—') + kv('Observação', cEsc(l.observacao)) + '</div>' +
+        (l.pendencia ? '<div class="cl-al cl-al-A" style="margin-top:8px;"><b>CONFERIR</b> · ' + cEsc(l.pendencia) + '</div>' : '') + '</div>' +
+      '<div class="cl-sec"><h3>Beneficiamento</h3>' + secB + '</div>' +
+      '<div class="cl-sec" style="color:var(--texto2);font-size:0.8rem;">Lote de cliente: não passa pelo TSI/RASTREL da produção própria e não é gravado na Central de Lotes.</div>' +
+    '</div>';
+  const m = document.getElementById('cl-modal');
+  m.classList.add('aberto'); m.scrollTop = 0;
+  document.body.style.overflow = 'hidden';
+  m.querySelector('.cl-x').focus();
+}
+
 function clSecoesLote(x) {
   const q = x.qualidade, t = x.tsi, r = x.rastrel;
   const kv = (k, v) => '<div><div class="k">' + k + '</div><div class="v">' + (v == null || v === '' ? '—' : v) + '</div></div>';
