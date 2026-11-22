@@ -36,6 +36,8 @@ let falhas = 0; const ok = (c, m) => { console.log((c ? '  ✔ ' : '  ✘ ') + m
   ok(await p.evaluate(() => CENTRAL.every(x => !/^PGW/.test(x.lotCode))), 'Central: PGW não entra em CENTRAL (lots/)');
   await p.click('#central-pgw-tbody tr[data-pgw="0"]'); await p.waitForTimeout(300);
   ok(await p.evaluate(() => { const t = document.getElementById('cl-box').innerText; return /PGW · PRESTAÇÃO DE SERVIÇO/i.test(t) && /BENEFICIAMENTO/i.test(t) && /QUALIDADE/i.test(t); }), 'Central: detalhe do lote PGW com Qualidade e Beneficiamento');
+  ok(await p.evaluate(() => /DIVERGÊNCIA · Categoria: aba PGW S2 × Beneficiamento C1/i.test(document.getElementById('cl-box').innerText)), 'Central: categoria divergente mostra o valor de cada fonte');
+  ok(await p.evaluate(() => LOTS_SERVICO_INVERNO[0].categoria === 'S2' && BENEF_INVERNO.some(c => c.detail.some(d => d.lote === 'PGW-T-01' && d.categoria === 'C1'))), 'registros não são sobrescritos (S2 e C1 continuam como vieram)');
   ok(!erros.length, 'sem erros de JavaScript' + (erros.length ? ': ' + erros.join(' | ') : ''));
   await b.close(); srv.close();
   console.log(falhas ? falhas + ' falha(s)' : 'tudo certo'); process.exit(falhas ? 1 : 0);

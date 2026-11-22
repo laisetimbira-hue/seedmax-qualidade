@@ -2940,6 +2940,20 @@ function invBenefLinhas() {
 function invBenefDoLotePgw(lp) {
   return invBenefLinhas().filter(x => x.origem === 'pgw' && x.pgw === lp).map(x => x.d);
 }
+// cultura/categoria de um lote PGW em cada fonte (aba PGW × Beneficiamento) — só exibição, nada é sobrescrito
+function invPgwFontes(lp) {
+  const benef = invBenefDoLotePgw(lp);
+  const n = v => invNormTxt(v);
+  const campo = (q, bVals) => {
+    const b = [...new Set(bVals.filter(Boolean))];
+    const diverge = !!(b.length && (!q ? false : b.some(v => n(v) !== n(q))));
+    return { qualidade: q || null, benef: b, diverge, soBenef: !q && b.length > 0 };
+  };
+  return {
+    cultura: campo(lp.cultura, benef.map(d => d.cultura)),
+    categoria: campo(lp.categoria, benef.map(d => d.categoria)),
+  };
+}
 function invBenefTrocarVisao(v) {
   invBenefVisao = v;
   ['propria', 'pgw'].forEach(k => document.getElementById('invb-visao-' + k).setAttribute('aria-pressed', String(k === v)));
@@ -3251,12 +3265,13 @@ function filterInvernoServico() {
       ${_sel ? _sel.celula(l) : '<td class="ld-selcol"></td>'}
       <td><span class="inv-lote-cod">${e(l.lote) || '—'}</span></td>
       <td>${e(l.cultivar)}</td>
-      <td>${l.cultura ? e(l.cultura) : '<span class="inv-selo pend">a confirmar</span>'}</td>
+      <td>${(() => { const f = invPgwFontes(l).cultura; return (l.cultura ? e(l.cultura) : '<span class="inv-selo pend">a confirmar</span>') +
+        (f.diverge || f.soBenef ? `<span class="inv-peso-alerta">${f.diverge ? '⚠ ' : ''}Benef.: ${e(f.benef.join(', '))}</span>` : ''); })()}</td>
       <td class="num">${l.bags != null ? Number(l.bags).toLocaleString('pt-BR') : '—'}</td>
       <td class="num" style="font-weight:700;">${invFmtKg(l.kg)}${l.pendencia ? `<span class="inv-peso-alerta">⚠ ${e(l.pendencia)}</span>` : ''}</td>
       <td class="num" style="color:${l.germinacao != null ? '#15803D' : 'var(--texto2)'};">${l.germinacao != null ? l.germinacao + '%' : 'aguardando'}</td>
       <td>${invSelo(l)}</td>
-      <td class="col-hide-mobile">${e(l.categoria) || '—'}</td>
+      <td class="col-hide-mobile">${(() => { const f = invPgwFontes(l).categoria; return (e(l.categoria) || '—') + (f.diverge ? `<span class="inv-peso-alerta">⚠ Benef.: ${e(f.benef.join(', '))}</span>` : ''); })()}</td>
       <td class="col-hide-mobile">${e(l.observacao) || ''}</td>
     </tr>`).join('');
 }
@@ -7193,6 +7208,12 @@ function abrirLotePgwCentral(l) {
       kv('Embalagem', uniq('embalagem')) + kv('Peneira', uniq('peneira')) + kv('Localização', uniq('localizacao')) + kv('Observações', uniq('observacoes')) + '</div>' +
       ((l.kg != null && Math.abs(bKg - l.kg) > 0.5) ? '<div class="cl-al cl-al-A" style="margin-top:8px;"><b>AVISO</b> · kg do Beneficiamento (' + cNum(bKg, 0) + ') diferente do kg da aba PGW (' + cNum(l.kg, 0) + ').</div>' : '')
     : '<div style="color:var(--texto2);font-size:0.85rem;">Nenhuma linha do Beneficiamento vinculada a este lote (ou a origem está em conferência no Beneficiamento).</div>';
+  const fontes = invPgwFontes(l);
+  const porFonte = (f, nomeVazio) => cEsc(f.qualidade || nomeVazio) + ' <small style="color:var(--texto2);">(aba PGW)</small>' +
+    (f.benef.length ? '<br>' + cEsc(f.benef.join(', ')) + ' <small style="color:var(--texto2);">(Beneficiamento)</small>' : '');
+  const avisosFonte = [['Cultura', fontes.cultura], ['Categoria', fontes.categoria]].filter(([, f]) => f.diverge)
+    .map(([nome, f]) => '<div class="cl-al cl-al-A" style="margin-top:8px;"><b>DIVERGÊNCIA</b> · ' + nome + ': aba PGW <b>' + cEsc(f.qualidade) + '</b> × Beneficiamento <b>' + cEsc(f.benef.join(', ')) +
+      '</b>. Os dois registros foram mantidos como estão — conferir na origem.</div>').join('');
   document.getElementById('cl-box').innerHTML =
     '<div class="cl-head"><div style="min-width:0;"><div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:.6px;color:var(--texto2);font-weight:700;">Lote · PGW · Prestação de serviço</div>' +
       '<h2 id="cl-titulo">' + cEsc(l.lote) + '</h2><div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">' + invSelo(l) +
@@ -7200,7 +7221,7 @@ function abrirLotePgwCentral(l) {
       '<button class="cl-x" type="button" onclick="fecharLoteCentral()" aria-label="Fechar">✕</button></div>' +
     '<div class="cl-body">' +
       '<div class="cl-sec"><h3>Identificação</h3><div class="cl-kv">' + kv('Empresa', cEsc(l.empresa || 'PGW')) + kv('Origem', cEsc(l.origem || 'Prestação de serviço')) +
-        kv('Safra', 'Inverno 26/26') + kv('Cultura', l.cultura ? cEsc(l.cultura) : 'a confirmar') + kv('Cultivar', cEsc(l.cultivar)) + kv('Categoria', cEsc(l.categoria)) + '</div></div>' +
+        kv('Safra', 'Inverno 26/26') + kv('Cultura', porFonte(fontes.cultura, 'a confirmar')) + kv('Cultivar', cEsc(l.cultivar)) + kv('Categoria', porFonte(fontes.categoria, '—')) + '</div>' + avisosFonte + '</div>' +
       '<div class="cl-sec"><h3>Qualidade</h3><div class="cl-kv">' + kv('Status', invSelo(l)) + kv('Germinação', l.germinacao != null ? cNum(l.germinacao) + '%' : 'aguardando') +
         kv('Bags', l.bags != null ? cNum(l.bags, 0) : '—') + kv('kg do lote', l.kg != null ? cNum(l.kg, 0) : '—') + kv('Observação', cEsc(l.observacao)) + '</div>' +
         (l.pendencia ? '<div class="cl-al cl-al-A" style="margin-top:8px;"><b>CONFERIR</b> · ' + cEsc(l.pendencia) + '</div>' : '') + '</div>' +
