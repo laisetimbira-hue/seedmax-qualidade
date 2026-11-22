@@ -455,6 +455,27 @@ html {
   }
 
   .count-badge { font-size: 0.82rem; color: var(--texto2); }
+  /* Inverno no padrão visual da Soja */
+  #inverno-overview-kpis.inv-kpi-grid { grid-template-columns: 1fr; }
+  @media (min-width: 640px) { #inverno-overview-kpis.inv-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  .inv-kpi-grid .kpi .value { font-size: 2rem; }
+  .inv-kpi-grid .kpi.alerta { background: #FEF2F2; border-color: #FECACA; }
+  .inv-kpi-grid .kpi.pend { background: #FFFBEB; border-color: #FCD34D; }
+  .inv-kpi-grid .kpi.pend .label, .inv-kpi-grid .kpi.pend .value, .inv-kpi-grid .kpi.pend .sub { color: #92400E; }
+  .inv-kpi-grid .kpi .sub a { color: inherit; font-weight: 700; }
+  .inv-tabela td, #page-inverno-lotes table td { font-size: 0.9rem; }
+  .inv-selo { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 0.78rem; font-weight: 700; white-space: nowrap; }
+  .inv-selo.pend { background: #FEF3C7; color: #92400E; border: 1px solid #F59E0B; }
+  .inv-selo.ok { background: #F0FDF4; color: #15803D; border: 1px solid #BBF7D0; }
+  .inv-selo.no { background: #FEF2F2; color: #B91C1C; border: 1px solid #FECACA; }
+  .inv-lote-cod { font-family: var(--font-head); font-weight: 800; font-size: 1rem; color: var(--accent); }
+  .inv-peso-alerta { display: block; font-size: 0.7rem; font-weight: 600; color: #B45309; margin-top: 2px; white-space: normal; }
+  .inv-aviso { background: #FFFBEB; border: 1px solid #FCD34D; color: #78350F; border-radius: var(--radius); padding: 10px 14px; font-size: 0.85rem; line-height: 1.45; margin-bottom: 10px; }
+  .inv-vazias { margin-top: 14px; }
+  .inv-vazias summary { cursor: pointer; padding: 14px 16px; font-weight: 700; color: var(--texto); list-style: revert; min-height: 44px; box-sizing: border-box; }
+  .inv-vazias .chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 16px 16px; }
+  .inv-vazias .chip { border: 1px solid var(--borda); background: var(--bg3); border-radius: 999px; padding: 5px 12px; font-size: 0.82rem; color: var(--texto); }
+  .inv-vazias .chip small { color: var(--texto2); }
   .count-badge span { color: var(--accent); font-weight: 700; }
 
   /* ============================================
@@ -2340,29 +2361,32 @@ html {
 
 <div id="safra-inverno" style="display:none;">
 <div class="tabs">
-  <div class="tab active" onclick="showPageInverno('overview')">Visão Geral</div>
-  <div class="tab" onclick="showPageInverno('lotes')">Lotes Detalhados</div>
-  <div class="tab" onclick="showPageInverno('cultivares')">Cultivares</div>
-  <div class="tab" onclick="showPageInverno('comprados')">Lotes Comprados</div>
-  <div class="tab" onclick="showPageInverno('beneficiamento')">Beneficiamento</div>
-  <div class="tab" onclick="showPageInverno('plantio')">Nosso Plantio</div>
+  <div class="tab active" data-inv-aba="overview" onclick="showPageInverno('overview', this)">Visão Geral</div>
+  <div class="tab" data-inv-aba="beneficiamento" onclick="showPageInverno('beneficiamento', this)">Beneficiamento</div>
+  <div class="tab" data-inv-aba="cultivares" onclick="showPageInverno('cultivares', this)">Por Cultivar</div>
+  <div class="tab" data-inv-aba="lotes" onclick="showPageInverno('lotes', this)">Lotes Detalhados</div>
+  <div class="tab" data-inv-aba="comprados" onclick="showPageInverno('comprados', this)">Lotes Comprados</div>
+  <div class="tab" data-inv-aba="plantio" onclick="showPageInverno('plantio', this)">Nosso Plantio</div>
 </div>
 
 <main>
 
   <!-- INVERNO: VISÃO GERAL -->
   <div class="page active" id="page-inverno-overview">
-    <div id="inverno-overview-kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;"></div>
+    <div id="inverno-overview-kpis" class="kpi-grid inv-kpi-grid"></div>
     <div class="panel">
-      <h3 style="margin:0 0 12px;font-size:0.95rem;color:var(--texto);">Por cultura</h3>
+      <h3 style="margin:0 0 12px;font-family:var(--font-head);font-size:1.1rem;letter-spacing:.5px;text-transform:uppercase;color:var(--texto);">Resumo por cultura <small style="font-family:var(--font-body);text-transform:none;letter-spacing:0;font-size:0.8rem;color:var(--texto2);font-weight:500;">ordenado por volume</small></h3>
       <div class="lotes-table-wrap">
-        <table>
+        <table class="inv-tabela">
           <thead>
             <tr>
               <th>Cultura</th>
               <th class="num">Lotes</th>
-              <th class="num">KG</th>
-              <th class="num">% Aprovados</th>
+              <th class="num">Volume (kg)</th>
+              <th class="num">Germ. média</th>
+              <th class="num">Aprov.</th>
+              <th class="num">Reprov.</th>
+              <th class="num">Pendentes</th>
             </tr>
           </thead>
           <tbody id="inverno-overview-tbody"></tbody>
@@ -2373,7 +2397,7 @@ html {
 
   <!-- INVERNO: LOTES DETALHADOS -->
   <div class="page" id="page-inverno-lotes">
-    <div id="inverno-lotes-kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;"></div>
+    <div id="inv-lotes-aviso-peso" class="inv-aviso" style="display:none;"></div>
     <div class="filter-bar" style="margin-bottom:8px;">
       <input type="text" id="inverno-lotes-search" placeholder="🔍 Buscar lote ou cultivar..." oninput="filterInvernoLotes()">
       <select id="inverno-lotes-cultura" onchange="onCulturaChangeInvernoLotes()">
@@ -2382,7 +2406,13 @@ html {
       <select id="inverno-lotes-cultivar" onchange="filterInvernoLotes()">
         <option value="">Todos os Cultivares</option>
       </select>
-      <div class="count-badge">Exibindo <span id="inverno-lotes-count">—</span> lotes</div>
+      <select id="inverno-lotes-status" onchange="filterInvernoLotes()">
+        <option value="">Todos os Status</option>
+        <option value="Pendente">Pendente</option>
+        <option value="Aprovado">Aprovado</option>
+        <option value="Reprovado">Reprovado</option>
+      </select>
+      <div class="count-badge">Exibindo <span id="inverno-lotes-count">—</span> lotes · <span id="inverno-lotes-kg">—</span></div>
     </div>
     <div class="ld-sel-bar" role="toolbar" aria-label="Seleção de lotes de inverno para impressão">
       <span class="ld-sel-txt" id="ldi-sel-txt" aria-live="polite">Nenhum lote selecionado</span>
@@ -2396,15 +2426,14 @@ html {
           <thead>
             <tr>
               <th class="ld-selcol" title="Selecionar lotes para impressão">✓</th>
-              <th onclick="sortTableInvernoLotes('data')" class="col-hide-mobile">Data</th>
-              <th onclick="sortTableInvernoLotes('cultura')">Cultura</th>
-              <th onclick="sortTableInvernoLotes('cultivar')">Cultivar</th>
-              <th onclick="sortTableInvernoLotes('categoria')" class="col-hide-mobile">Categoria</th>
               <th onclick="sortTableInvernoLotes('lote')">Lote</th>
-              <th onclick="sortTableInvernoLotes('germinacao')" class="num" style="color:#15803D;">Germinação</th>
-              <th onclick="sortTableInvernoLotes('status')">Status</th>
-              <th onclick="sortTableInvernoLotes('embalagem')" class="col-hide-mobile">Embalagem</th>
-              <th onclick="sortTableInvernoLotes('kg')" class="num">KG</th>
+              <th onclick="sortTableInvernoLotes('cultivar')">Cultivar</th>
+              <th onclick="sortTableInvernoLotes('_bags')" class="num">Bags</th>
+              <th onclick="sortTableInvernoLotes('_kg')" class="num">kg do lote</th>
+              <th onclick="sortTableInvernoLotes('germinacao')" class="num">Germinação</th>
+              <th onclick="sortTableInvernoLotes('_status')">Status</th>
+              <th onclick="sortTableInvernoLotes('categoria')" class="col-hide-mobile">Categoria</th>
+              <th onclick="sortTableInvernoLotes('data')" class="col-hide-mobile">Data</th>
             </tr>
           </thead>
           <tbody id="inverno-lotes-tbody"></tbody>
@@ -2425,6 +2454,7 @@ html {
       </div>
     </div>
     <div id="inverno-cultivar-grid"></div>
+    <div id="inverno-cultivar-vazias"></div>
   </div>
 
   <!-- INVERNO: LOTES COMPRADOS -->
@@ -2633,8 +2663,11 @@ function rankColor(r) {
 
 // ===================== PAGES =====================
 function showPage(name) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  // só as abas/páginas do Verão: antes isto desmarcava também a Visão Geral do
+  // Inverno, que abria em branco ao trocar de safra
+  const raizVerao = document.getElementById('safra-verao') || document;
+  raizVerao.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  raizVerao.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('page-' + name).classList.add('active');
   event.target.classList.add('active');
   if (name === 'beneficiamento') buildBeneficiamento();
@@ -2671,7 +2704,7 @@ function atualizarHeaderSafra(safra) {
     document.getElementById('h-lotes').textContent = totalLotes;
     document.getElementById('h-cultivares').textContent = SUMMARY.length;
   } else {
-    const totalKg    = LOTS_INVERNO.reduce((s,l) => s + (l.kg || 0), 0);
+    const totalKg    = LOTS_INVERNO.reduce((s,l) => s + (pesoLoteInverno(l).kg || 0), 0);
     const totalLotes = LOTS_INVERNO.length;
     const cultivares = new Set(LOTS_INVERNO.map(l => l.cultivar)).size;
     document.getElementById('h-kg').textContent = formatKgHeader(totalKg);
@@ -2698,20 +2731,32 @@ function trocarSafra(safra) {
     inverno.style.display = '';
     Object.assign(btnInverno.style, ativo);
     Object.assign(btnVerao.style, inativo);
-    if (!invernoAtiva) {
-      invernoAtiva = true;
-      buildInvernoOverview();
-    }
+    invernoAtiva = true;
+    showPageInverno('overview');
   }
+  atualizarRodapeSafra(safra);
   atualizarHeaderSafra(safra);
 }
 
-function showPageInverno(name) {
+// rodapé de parâmetros: mostra só os critérios da safra visível
+function atualizarRodapeSafra(safra) {
+  const inv = safra !== 'verao';
+  const pv = document.getElementById('rodape-params-verao');
+  const pi = document.getElementById('rodape-params-inverno');
+  const nome = document.getElementById('rodape-safra');
+  if (pv) pv.style.display = inv ? 'none' : 'contents';
+  if (pi) pi.style.display = inv ? 'contents' : 'none';
+  if (nome) nome.textContent = inv ? 'Inverno 26/26' : 'Soja 25-26';
+}
+
+function showPageInverno(name, aba) {
   const root = document.getElementById('safra-inverno');
   root.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   root.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('page-inverno-' + name).classList.add('active');
-  event.target.classList.add('active');
+  const alvo = aba || root.querySelector('.tab[data-inv-aba="' + name + '"]');
+  if (alvo) alvo.classList.add('active');
+  if (name === 'overview') buildInvernoOverview();
   if (name === 'lotes') buildInvernoLotes();
   if (name === 'cultivares') buildInvernoCultivares();
   if (name === 'comprados') buildInvernoComprados();
@@ -2896,38 +2941,151 @@ function culturaNomeInverno(cv) {
   return meta ? meta.cultura : null;
 }
 
+// -------- PESO DO LOTE (Inverno) --------
+// O campo "kg" da análise vem de "PESO LOTE"; quando essa coluna está vazia
+// o robô cai em "QUANT." (nº de embalagens). Por isso o peso exibido vem do
+// Beneficiamento, casando Cultura + Lote (mesma identidade INV2626_CULTURA_LOTE):
+// 1º o total kg registrado; sem ele, bags × peso por bag do próprio lote.
+// Não grava nada: só leitura de LOTS_INVERNO e BENEF_INVERNO.
+const GERM_MIN_INVERNO_TXT = 90;   // só exibição; a regra de aprovação fica no robô (GERMINACAO_MINIMA_INVERNO)
+let _invBenefIdx = null;
+function invChaveLote(cultura, lote) {
+  const n = v => String(v == null ? '' : v).normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toUpperCase().replace(/\s+/g, ' ');
+  return n(cultura) + '|' + n(lote);
+}
+function invIndiceBenef() {
+  if (_invBenefIdx) return _invBenefIdx;
+  _invBenefIdx = {};
+  const dados = (typeof BENEF_INVERNO !== 'undefined' && Array.isArray(BENEF_INVERNO)) ? BENEF_INVERNO : [];
+  for (const c of dados) {
+    const cultura = invBenefCultura(c);
+    for (const d of (c.detail || [])) {
+      if (!d.lote) continue;
+      const k = invChaveLote(cultura, d.lote);
+      const e = _invBenefIdx[k] || (_invBenefIdx[k] = { cultura, cultivar: c.cultivar, lote: d.lote, bags: 0, kg: 0, kgCalc: 0, semPeso: false, pesosBag: new Set() });
+      const bags = Number(d.bags) || 0;
+      const pb = d.peso_bag != null ? Number(d.peso_bag) : null;
+      e.bags += bags;
+      if (pb != null) e.pesosBag.add(pb);
+      if (d.kg != null && Number(d.kg) > 0) e.kg += Number(d.kg);
+      else if (pb != null && bags) e.kg += bags * pb;
+      else e.semPeso = true;
+      if (pb != null && bags) e.kgCalc += bags * pb;
+    }
+  }
+  return _invBenefIdx;
+}
+function pesoLoteInverno(l) {
+  if (l._peso) return l._peso;
+  const b = invIndiceBenef()[invChaveLote(l.cultura, l.lote)];
+  let r;
+  if (!b) {
+    r = { kg: null, bags: null, fonte: 'sem-benef', alerta: 'Sem peso: lote não encontrado no Beneficiamento' };
+  } else {
+    const alertas = [];
+    if (b.semPeso) alertas.push('linha do Beneficiamento sem peso');
+    if (b.kgCalc && Math.abs(b.kgCalc - b.kg) > 0.5) alertas.push('total kg ≠ bags × peso/bag (' + b.kgCalc.toLocaleString('pt-BR') + ' kg)');
+    if (l.kg != null && Math.abs(l.kg - b.kg) > 0.5 && l.kg !== b.bags) alertas.push('análise registra ' + Number(l.kg).toLocaleString('pt-BR') + ' kg');
+    r = { kg: b.kg || null, bags: b.bags, fonte: 'benef', alerta: alertas.length ? 'Divergência: ' + alertas.join('; ') : null };
+  }
+  Object.defineProperty(l, '_peso', { value: r, enumerable: false, configurable: true });
+  return r;
+}
+// lotes do Beneficiamento que não têm registro na Qualidade (só leitura, para o aviso)
+function invBenefSemQualidade() {
+  const naQual = new Set(LOTS_INVERNO.map(l => invChaveLote(l.cultura, l.lote)));
+  return Object.entries(invIndiceBenef()).filter(([k]) => !naQual.has(k)).map(([, b]) => b);
+}
+function invStatusTxt(l) { return l.status || 'Pendente'; }
+function invSelo(l) {
+  if (l.status === 'Aprovado') return '<span class="inv-selo ok">Aprovado</span>';
+  if (l.status === 'Reprovado') return '<span class="inv-selo no">Reprovado</span>';
+  return '<span class="inv-selo pend"><svg width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="4" fill="none" stroke="currentColor" stroke-width="2"/></svg>Pendente</span>';
+}
+function invFmtKg(kg) { return kg == null ? '—' : Number(kg).toLocaleString('pt-BR') + ' kg'; }
+function invFmtT(kg) { return (kg / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' t'; }
+
 // -------- VISÃO GERAL --------
 function buildInvernoOverview() {
-  const totalKg = LOTS_INVERNO.reduce((s, l) => s + (l.kg || 0), 0);
-  const total = LOTS_INVERNO.length;
-  const comStatus = LOTS_INVERNO.filter(l => l.status != null);
+  const lotes = LOTS_INVERNO;
+  const total = lotes.length;
+  const pesos = lotes.map(pesoLoteInverno);
+  const totalKg = pesos.reduce((s, p) => s + (p.kg || 0), 0);
+  const semPeso = pesos.filter(p => p.kg == null).length;
+  const comAlerta = pesos.filter(p => p.alerta).length;
+  const totalBags = pesos.reduce((s, p) => s + (p.bags || 0), 0);
+  const comStatus = lotes.filter(l => l.status != null);
   const aprovados = comStatus.filter(l => l.status === 'Aprovado').length;
-  const pctAprov = comStatus.length ? (aprovados / comStatus.length * 100).toFixed(1) : '—';
-  const culturas = [...new Set(LOTS_INVERNO.map(l => l.cultura))];
-  const cultivares = [...new Set(LOTS_INVERNO.map(l => l.cultivar))];
+  const pend = total - comStatus.length;
+  const culturas = [...new Set(lotes.map(l => l.cultura))];
+  const cultivares = [...new Set(lotes.map(l => l.cultivar))];
+  const foraQual = invBenefSemQualidade();
+  const esc = typeof invBenefEsc === 'function' ? invBenefEsc : (v => v);
+  const foraTxt = (() => {
+    const porCv = {};
+    foraQual.forEach(b => { (porCv[b.cultivar] = porCv[b.cultivar] || []).push(b.lote); });
+    return Object.entries(porCv).map(([cv, ls]) => ls.length === 1 ? '<b>' + esc(ls[0]) + '</b> (' + esc(cv) + ')' : '<b>' + ls.length + ' lotes ' + esc(cv) + '</b>').join(' e ');
+  })();
 
   document.getElementById('inverno-overview-kpis').innerHTML = `
-    <div class="kpi"><div class="label">Total Produzido</div><div class="value" style="font-size:1.6rem;">${(totalKg/1000).toFixed(1)}t</div><div class="sub">${totalKg.toLocaleString('pt-BR')} kg</div></div>
-    <div class="kpi"><div class="label">Lotes</div><div class="value" style="font-size:1.6rem;">${total}</div></div>
-    <div class="kpi"><div class="label">% Aprovados</div><div class="value" style="font-size:1.6rem;color:${pctAprov !== '—' && pctAprov >= 90 ? '#16A34A' : '#D97706'};">${pctAprov !== '—' ? pctAprov + '%' : '—'}</div><div class="sub">germinação ≥90%</div></div>
-    <div class="kpi"><div class="label">Cultivares</div><div class="value" style="font-size:1.6rem;">${cultivares.length}</div><div class="sub">${culturas.length} culturas</div></div>
+    <div class="kpi warn pend">
+      <div class="label">Pendentes de análise</div>
+      <div class="value">${pend} de ${total}</div>
+      <div class="sub">${pend ? 'aguardando germinação · <a href="#" onclick="event.preventDefault();invIrLotesPendentes()">ver lotes pendentes →</a>' : 'todos os lotes analisados'}</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Volume dos lotes na Qualidade</div>
+      <div class="value">${invFmtT(totalKg)}</div>
+      <div class="sub">${totalKg.toLocaleString('pt-BR')} kg · peso do Beneficiamento${semPeso ? ` · <b style="color:#B45309;">${semPeso} sem peso</b>` : ''}${comAlerta - semPeso > 0 ? ` · <b style="color:#B45309;">${comAlerta - semPeso} com divergência</b>` : ''}</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Lotes na Qualidade</div>
+      <div class="value">${total}</div>
+      <div class="sub">${totalBags.toLocaleString('pt-BR')} bags · ${cultivares.length} cultivar${cultivares.length === 1 ? '' : 'es'}</div>
+    </div>
+    <div class="kpi accent">
+      <div class="label">Aprovados</div>
+      <div class="value">${aprovados} de ${total}</div>
+      <div class="sub">${comStatus.length ? (aprovados / comStatus.length * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '% dos analisados' : 'sem resultado de germinação ainda'}</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Culturas</div>
+      <div class="value">${culturas.length}</div>
+      <div class="sub">${culturas.map(esc).join(', ') || '—'}</div>
+    </div>
+    ${foraQual.length ? `<div class="kpi danger alerta">
+      <div class="label" style="color:#991B1B;">Atenção</div>
+      <div class="sub" style="font-size:0.85rem;color:#7F1D1D;line-height:1.45;margin-top:6px;">${foraQual.length} lote${foraQual.length === 1 ? '' : 's'} beneficiado${foraQual.length === 1 ? '' : 's'} sem registro na Qualidade: ${foraTxt}.</div>
+    </div>` : ''}
   `;
 
   const porCultura = {};
-  for (const l of LOTS_INVERNO) {
-    const c = porCultura[l.cultura] || (porCultura[l.cultura] = { lotes: 0, kg: 0, comStatus: 0, aprovados: 0 });
+  lotes.forEach((l, i) => {
+    const c = porCultura[l.cultura] || (porCultura[l.cultura] = { lotes: 0, kg: 0, aprov: 0, reprov: 0, pend: 0, germ: [] });
     c.lotes++;
-    c.kg += l.kg || 0;
-    if (l.status != null) { c.comStatus++; if (l.status === 'Aprovado') c.aprovados++; }
-  }
-  const linhas = Object.entries(porCultura).sort((a,b) => b[1].kg - a[1].kg);
+    c.kg += pesos[i].kg || 0;
+    if (l.status === 'Aprovado') c.aprov++; else if (l.status === 'Reprovado') c.reprov++; else c.pend++;
+    if (l.germinacao != null) c.germ.push(l.germinacao);
+  });
+  const linhas = Object.entries(porCultura).sort((a, b) => b[1].kg - a[1].kg);
   document.getElementById('inverno-overview-tbody').innerHTML = linhas.map(([cultura, c]) => `
     <tr>
-      <td>${cultura}</td>
+      <td style="font-weight:700;">${esc(cultura)}</td>
       <td class="num">${c.lotes}</td>
       <td class="num">${c.kg.toLocaleString('pt-BR')}</td>
-      <td class="num">${c.comStatus ? (c.aprovados / c.comStatus * 100).toFixed(1) + '%' : '—'}</td>
-    </tr>`).join('') || `<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--texto2);">Sem lotes de Inverno ainda.</td></tr>`;
+      <td class="num">${c.germ.length ? (c.germ.reduce((a, b) => a + b, 0) / c.germ.length).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%' : '<span style="color:var(--texto2);">aguardando</span>'}</td>
+      <td class="num" style="color:#15803D;font-weight:700;">${c.aprov}</td>
+      <td class="num" style="color:#B91C1C;font-weight:700;">${c.reprov}</td>
+      <td class="num">${c.pend ? `<span class="inv-selo pend">${c.pend} pendente${c.pend === 1 ? '' : 's'}</span>` : '0'}</td>
+    </tr>`).join('') || `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--texto2);">Sem lotes de Inverno ainda.</td></tr>`;
+  const gm = document.getElementById('rodape-germ-min-inverno');
+  if (gm) gm.textContent = GERM_MIN_INVERNO_TXT;
+}
+
+function invIrLotesPendentes() {
+  showPageInverno('lotes');
+  const st = document.getElementById('inverno-lotes-status');
+  if (st) { st.value = 'Pendente'; filterInvernoLotes(); }
 }
 
 // -------- LOTES DETALHADOS --------
@@ -2946,14 +3104,14 @@ function buildInvernoLotes() {
   });
   preencherCultivarInvernoLotes();
 
-  const totalKg = LOTS_INVERNO.reduce((s,l) => s + (l.kg||0), 0);
-  document.getElementById('inverno-lotes-kpis').innerHTML = `
-    <div class="kpi"><div class="label">Total</div><div class="value" style="font-size:1.6rem;">${(totalKg/1000).toFixed(1)}t</div><div class="sub">${totalKg.toLocaleString('pt-BR')} kg</div></div>
-    <div class="kpi"><div class="label">Lotes</div><div class="value" style="font-size:1.6rem;">${LOTS_INVERNO.length}</div></div>
-    <div class="kpi"><div class="label">Culturas</div><div class="value" style="font-size:1.6rem;">${culturas.length}</div></div>
-    <div class="kpi"><div class="label">Cultivares</div><div class="value" style="font-size:1.6rem;">${new Set(LOTS_INVERNO.map(l=>l.cultivar)).size}</div></div>
-  `;
-
+  // cartões de resumo ficam na Visão Geral; aqui só o aviso de peso, se houver
+  LOTS_INVERNO.forEach(l => { const p = pesoLoteInverno(l); [['_bags', p.bags], ['_kg', p.kg], ['_status', invStatusTxt(l)]].forEach(([k, v]) => Object.defineProperty(l, k, { value: v, enumerable: false, configurable: true })); });   // só para ordenar; não vão para o banco
+  const nAlerta = LOTS_INVERNO.filter(l => pesoLoteInverno(l).alerta).length;
+  const av = document.getElementById('inv-lotes-aviso-peso');
+  if (av) {
+    av.style.display = nAlerta ? '' : 'none';
+    av.innerHTML = nAlerta ? `<b>${nAlerta} lote${nAlerta === 1 ? '' : 's'} com peso a conferir</b> — sem correspondência ou com divergência no Beneficiamento (veja a linha marcada).` : '';
+  }
   filteredInvernoLotes = LOTS_INVERNO.slice();
   renderInvernoLotesTable();
 }
@@ -2982,9 +3140,11 @@ function filterInvernoLotes() {
   const q = (document.getElementById('inverno-lotes-search').value || '').toLowerCase().trim();
   const cultura = document.getElementById('inverno-lotes-cultura').value;
   const cultivar = document.getElementById('inverno-lotes-cultivar').value;
+  const statusSel = (document.getElementById('inverno-lotes-status') || {}).value || '';
   filteredInvernoLotes = LOTS_INVERNO.filter(l => {
     if (cultura && l.cultura !== cultura) return false;
     if (cultivar && l.cultivar !== cultivar) return false;
+    if (statusSel && invStatusTxt(l) !== statusSel) return false;
     if (q && !(l.lote||'').toLowerCase().includes(q) && !l.cultivar.toLowerCase().includes(q)) return false;
     return true;
   });
@@ -3006,29 +3166,35 @@ function sortTableInvernoLotes(key) {
 
 function renderInvernoLotesTable() {
   document.getElementById('inverno-lotes-count').textContent = filteredInvernoLotes.length;
+  const kgTot = filteredInvernoLotes.reduce((s, l) => s + (pesoLoteInverno(l).kg || 0), 0);
+  const kgEl = document.getElementById('inverno-lotes-kg');
+  if (kgEl) kgEl.textContent = invFmtT(kgTot) + ' (' + kgTot.toLocaleString('pt-BR') + ' kg)';
   const _ldSel = typeof ldSelInverno !== 'undefined' ? ldSelInverno : null;   // seleção para impressão (Lotes Detalhados de inverno)
   if (_ldSel) setTimeout(() => _ldSel.barra(), 0);
+  const esc = typeof invBenefEsc === 'function' ? invBenefEsc : (v => v);
   if (!LOTS_INVERNO.length) {
-    document.getElementById('inverno-lotes-tbody').innerHTML = `<tr><td colspan="10" style="text-align:center;padding:32px;color:var(--texto2);">Nenhum lote de Inverno registrado ainda.</td></tr>`;
+    document.getElementById('inverno-lotes-tbody').innerHTML = `<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--texto2);">Nenhum lote de Inverno registrado ainda.</td></tr>`;
     return;
   }
   if (!filteredInvernoLotes.length) {
-    document.getElementById('inverno-lotes-tbody').innerHTML = `<tr><td colspan="10" style="text-align:center;padding:32px;color:var(--texto2);">Nenhum lote encontrado com os filtros selecionados.</td></tr>`;
+    document.getElementById('inverno-lotes-tbody').innerHTML = `<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--texto2);">Nenhum lote encontrado com os filtros selecionados.</td></tr>`;
     return;
   }
-  document.getElementById('inverno-lotes-tbody').innerHTML = filteredInvernoLotes.map(l => `
+  document.getElementById('inverno-lotes-tbody').innerHTML = filteredInvernoLotes.map(l => {
+    const p = pesoLoteInverno(l);
+    return `
     <tr${_ldSel ? _ldSel.linhaClasse(l) : ''}>
       ${_ldSel ? _ldSel.celula(l) : '<td class="ld-selcol"></td>'}
-      <td class="col-hide-mobile">${l.data||'—'}</td>
-      <td>${l.cultura}</td>
-      <td style="font-size:0.74rem;">${l.cultivar}</td>
-      <td class="col-hide-mobile">${l.categoria||'—'}</td>
-      <td><code style="color:var(--accent);font-size:0.78rem;font-family:'IBM Plex Mono',monospace;">${l.lote||'—'}</code></td>
-      <td class="num" style="color:${l.germinacao!=null?'#15803D':'#94A3B8'};font-weight:${l.germinacao!=null?'700':'400'};">${l.germinacao!=null?l.germinacao+'%':'—'}</td>
-      <td>${l.status ? `<span style="padding:2px 8px;border-radius:999px;font-size:0.72rem;font-weight:700;background:${l.status==='Aprovado'?'#F0FDF4':'#FEF2F2'};color:${l.status==='Aprovado'?'#15803D':'#B91C1C'};">${l.status}</span>` : '<span style="color:#94A3B8;">Pendente</span>'}</td>
-      <td class="col-hide-mobile">${l.embalagem||'—'}</td>
-      <td class="num">${l.kg!=null?l.kg.toLocaleString('pt-BR'):'—'}</td>
-    </tr>`).join('');
+      <td><span class="inv-lote-cod">${esc(l.lote) || '—'}</span></td>
+      <td>${esc(l.cultivar)} <span style="color:var(--texto2);font-size:0.8rem;">· ${esc(l.cultura)}</span></td>
+      <td class="num">${p.bags != null ? p.bags.toLocaleString('pt-BR') : '—'}</td>
+      <td class="num" style="font-weight:700;">${invFmtKg(p.kg)}${p.alerta ? `<span class="inv-peso-alerta" title="${esc(p.alerta)}">⚠ ${esc(p.alerta)}</span>` : ''}</td>
+      <td class="num" style="color:${l.germinacao != null ? '#15803D' : 'var(--texto2)'};font-weight:${l.germinacao != null ? '700' : '400'};">${l.germinacao != null ? l.germinacao + '%' : 'aguardando'}</td>
+      <td>${invSelo(l)}</td>
+      <td class="col-hide-mobile">${esc(l.categoria) || '—'}</td>
+      <td class="col-hide-mobile">${esc(l.data) || '—'}</td>
+    </tr>`;
+  }).join('');
 }
 
 // -------- CULTIVARES --------
@@ -3065,10 +3231,11 @@ function buildInvernoCultivares() {
     const reprov  = comStatus.filter(l => l.status === 'Reprovado').length;
     const pend    = cvLots.length - comStatus.length;
     const total   = cvLots.length;
-    const kgAprov  = cvLots.filter(l=>l.status==='Aprovado').reduce((s,l)=>s+(l.kg||0),0);
-    const kgReprov = cvLots.filter(l=>l.status==='Reprovado').reduce((s,l)=>s+(l.kg||0),0);
-    const kgPend   = cvLots.filter(l=>l.status==null).reduce((s,l)=>s+(l.kg||0),0);
-    const totalKg  = cvLots.reduce((s,l)=>s+(l.kg||0),0);
+    const kgL = l => pesoLoteInverno(l).kg || 0;
+    const kgAprov  = cvLots.filter(l=>l.status==='Aprovado').reduce((s,l)=>s+kgL(l),0);
+    const kgReprov = cvLots.filter(l=>l.status==='Reprovado').reduce((s,l)=>s+kgL(l),0);
+    const kgPend   = cvLots.filter(l=>l.status==null).reduce((s,l)=>s+kgL(l),0);
+    const totalKg  = cvLots.reduce((s,l)=>s+kgL(l),0);
     const germVals = cvLots.filter(l=>l.germinacao!=null).map(l=>l.germinacao);
     const germMedia = germVals.length ? germVals.reduce((a,b)=>a+b,0)/germVals.length : null;
     const pctAprov = comStatus.length ? Math.round(aprov/comStatus.length*100) : null;
@@ -3080,8 +3247,24 @@ function buildInvernoCultivares() {
   if (cultura) linhas = linhas.filter(l => l.cultura === cultura);
   if (q) linhas = linhas.filter(l => l.cultivar.toLowerCase().includes(q));
   linhas.sort((a,b) => a.cultura.localeCompare(b.cultura,'pt-BR') || a.cultivar.localeCompare(b.cultivar,'pt-BR'));
+  // primeiro as cultivares com lotes na Qualidade; as demais vão para o bloco recolhido
+  const vazias = linhas.filter(l => l.lotes === 0);
+  linhas = linhas.filter(l => l.lotes > 0);
+  const benefIdx = invIndiceBenef();
+  const benefPorCv = {};
+  Object.values(benefIdx).forEach(b => { benefPorCv[b.cultivar] = (benefPorCv[b.cultivar] || 0) + 1; });
+  const escV = typeof invBenefEsc === 'function' ? invBenefEsc : (v => v);
+  const vzEl = document.getElementById('inverno-cultivar-vazias');
+  if (vzEl) {
+    const aberto = vzEl.querySelector('details') && vzEl.querySelector('details').open;
+    vzEl.innerHTML = vazias.length ? `<details class="panel inv-vazias"${aberto ? ' open' : ''}>
+      <summary>${vazias.length} cultivar${vazias.length === 1 ? '' : 'es'} sem lotes nesta safra</summary>
+      ${vazias.filter(v => benefPorCv[v.cultivar]).map(v => `<div class="inv-aviso" style="margin:0 16px 12px;background:#FEF2F2;border-color:#FECACA;color:#7F1D1D;"><b>${escV(v.cultivar)}</b> tem ${benefPorCv[v.cultivar]} lote${benefPorCv[v.cultivar] === 1 ? '' : 's'} no Beneficiamento e nenhum na Qualidade.</div>`).join('')}
+      <div class="chips">${vazias.map(v => `<span class="chip"><b>${escV(v.cultivar)}</b> <small>· ${escV(v.cultura)}</small></span>`).join('')}</div>
+    </details>` : '';
+  }
 
-  document.getElementById('inverno-cv-count').textContent = linhas.length;
+  document.getElementById('inverno-cv-count').textContent = linhas.length + ' com lotes · ' + (linhas.length + vazias.length);
 
   let prevCultura = null;
   document.getElementById('inverno-cultivar-grid').innerHTML = linhas.map(l => {
@@ -3151,7 +3334,7 @@ function buildInvernoCultivares() {
             <div class="cv-metric-val">${l.lotes}</div>
           </div>
           <div class="cv-metric-box">
-            <div class="cv-metric-label">Total KG</div>
+            <div class="cv-metric-label">kg do lote (total)</div>
             <div class="cv-metric-val">${l.totalKg>0?l.totalKg.toLocaleString('pt-BR'):'—'}</div>
           </div>
         </div>
@@ -3181,10 +3364,20 @@ function buildInvernoCultivares() {
             </div>
           </div>
         </div>
+        <div style="margin-top:10px;"><a href="#" onclick="event.preventDefault();invVerLotesCultivar(this.dataset.cv)" data-cv="${l.cultivar.replace(/"/g,'&quot;')}" style="font-size:0.85rem;font-weight:700;color:var(--accent);">Ver lotes →</a></div>
 
       </div>
     </div>`;
   }).join('') || `<div style="text-align:center;padding:48px 24px;color:var(--texto2);">Nenhum cultivar encontrado.</div>`;
+}
+
+function invVerLotesCultivar(cv) {
+  showPageInverno('lotes');
+  const st = document.getElementById('inverno-lotes-status'); if (st) st.value = '';
+  const cu = document.getElementById('inverno-lotes-cultura'); if (cu) cu.value = '';
+  preencherCultivarInvernoLotes();
+  const sel = document.getElementById('inverno-lotes-cultivar'); if (sel) sel.value = cv;
+  filterInvernoLotes();
 }
 
 // -------- LOTES COMPRADOS --------
@@ -5885,6 +6078,13 @@ setupMapaDragDrop();
 
 <footer style="background:#fff;border-top:1px solid #E2E8F0;padding:10px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:0.72rem;color:#94A3B8;">
   <span style="font-weight:700;color:#CBD5E1;text-transform:uppercase;letter-spacing:1px;">Parâmetros</span>
+  <span id="rodape-params-inverno" style="display:none;">
+    <span class="footer-spacer" style="color:#E2E8F0;">·</span>
+    <span><b style="color:#64748B;">Aprovado:</b> <span style="color:#16A34A;font-weight:600;">germinação oficial ≥ <span id="rodape-germ-min-inverno">90</span>%</span></span>
+    <span class="footer-spacer" style="color:#E2E8F0;">·</span>
+    <span style="color:#94A3B8;">Inverno não usa vigor nem TZ</span>
+  </span>
+  <span id="rodape-params-verao" style="display:contents;">
   <span class="footer-spacer" style="color:#E2E8F0;">·</span>
   <span><b style="color:#64748B;">TZ Germ:</b>
     <span style="color:#16A34A;font-weight:600;">A≥95%</span> &nbsp;
@@ -5908,7 +6108,8 @@ setupMapaDragDrop();
   </span>
   <span class="footer-spacer" style="color:#E2E8F0;">·</span>
   <span style="color:#94A3B8;">Status final = pior critério entre os três</span>
-  <span style="margin-left:auto;color:#CBD5E1;">Soja 25-26 · <span id="rodape-atualizado" style="color:#94A3B8;">Atualizado em —</span></span>
+  </span>
+  <span style="margin-left:auto;color:#CBD5E1;"><span id="rodape-safra">Soja 25-26</span> · <span id="rodape-atualizado" style="color:#94A3B8;">Atualizado em —</span></span>
 </footer>
 
 <!-- ========== MAPA ACCESS MODAL ========== -->
@@ -6171,9 +6372,9 @@ function ldPaginaVerao(l, i, total) {
 
 // ---------- inverno (preparado: hoje usa os mesmos campos da tabela de inverno) ----------
 function ldResumoInverno(lotes) {
-  return '<table class="ldp-lista"><thead><tr><th>Lote</th><th>Data</th><th>Cultura</th><th>Cultivar</th><th>Categoria</th><th class="n">Germinação</th><th>Status</th><th class="n">KG</th></tr></thead><tbody>' +
-    lotes.map(l => '<tr><td><b>' + ldVal(l.lote) + '</b></td><td>' + ldVal(l.data) + '</td><td>' + ldVal(l.cultura) + '</td><td>' + ldVal(l.cultivar) + '</td><td>' + ldVal(l.categoria) + '</td>' +
-      '<td class="n">' + (l.germinacao != null ? ldEsc(l.germinacao) + '%' : '—') + '</td><td>' + ldVal(l.status) + '</td><td class="n">' + (l.kg != null ? ldNum(l.kg, 0) : '—') + '</td></tr>').join('') +
+  return '<table class="ldp-lista"><thead><tr><th>Lote</th><th>Data</th><th>Cultura</th><th>Cultivar</th><th>Categoria</th><th class="n">Germinação</th><th>Status</th><th class="n">Bags</th><th class="n">kg do lote</th></tr></thead><tbody>' +
+    lotes.map(l => { const p = pesoLoteInverno(l); return '<tr><td><b>' + ldVal(l.lote) + '</b></td><td>' + ldVal(l.data) + '</td><td>' + ldVal(l.cultura) + '</td><td>' + ldVal(l.cultivar) + '</td><td>' + ldVal(l.categoria) + '</td>' +
+      '<td class="n">' + (l.germinacao != null ? ldEsc(l.germinacao) + '%' : '—') + '</td><td>' + ldEsc(invStatusTxt(l)) + '</td><td class="n">' + (p.bags != null ? ldNum(p.bags, 0) : '—') + '</td><td class="n">' + (p.kg != null ? ldNum(p.kg, 0) : '—') + (p.alerta ? ' ⚠' : '') + '</td></tr>'; }).join('') +
     '</tbody></table>';
 }
 function ldPaginaInverno(l, i, total) {
@@ -6184,7 +6385,7 @@ function ldPaginaInverno(l, i, total) {
     '<div class="ldp-sec"><h3>Identificação</h3><div class="ldp-kv">' +
       ldKv('Lote', '<span class="ldp-mono">' + ldVal(l.lote) + '</span>') + ldKv('Cultura', ldVal(l.cultura)) + ldKv('Cultivar', ldVal(l.cultivar)) +
       ldKv('Categoria', ldVal(l.categoria)) + ldKv('Data', ldVal(l.data)) + ldKv('Embalagem', ldVal(l.embalagem)) + '</div></div>' +
-    '<div class="ldp-sec"><h3>KG / quantidade</h3><div class="ldp-kv">' + ldKv('KG', l.kg != null ? ldNum(l.kg, 0) + ' kg' : '—') + '</div></div>' +
+    '<div class="ldp-sec"><h3>KG / quantidade</h3><div class="ldp-kv">' + (p => ldKv('Bags', p.bags != null ? ldNum(p.bags, 0) : '—') + ldKv('kg do lote', p.kg != null ? ldNum(p.kg, 0) + ' kg' : '—') + (p.alerta ? ldKv('Peso', ldEsc(p.alerta)) : ''))(pesoLoteInverno(l)) + '</div></div>' +
     '<div class="ldp-sec"><h3>Resultados de Qualidade</h3><table class="ldp-res"><thead><tr><th>Análise</th><th class="n">Resultado</th></tr></thead><tbody>' +
       '<tr><td>Germinação</td><td class="n"><b>' + (l.germinacao != null ? ldEsc(l.germinacao) + '%' : '—') + '</b></td></tr>' +
       '<tr><td>Status</td><td class="n">' + st + '</td></tr></tbody></table></div>';
