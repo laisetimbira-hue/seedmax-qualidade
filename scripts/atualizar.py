@@ -831,6 +831,149 @@ def parse_inverno_lotes(buf):
     return out
 
 
+# ------------------------------------------------ INVERNO: PRESTAÇÃO DE SERVIÇO
+# Abas de clientes para quem a Sementes com Vigor presta serviço. Cada aba é de
+# uma empresa e pode ter mais de uma cultura (PGW: Aveia Branca e Aveia Preta).
+# Esses lotes NÃO são produção própria nem Lotes Comprados: vão para um
+# conjunto separado (LOTS_SERVICO_INVERNO) e ficam fora de todos os totais.
+ABAS_SERVICO_INVERNO = {"PGW": "PGW"}          # nome da aba -> empresa
+ORIGEM_SERVICO = "Prestação de serviço"
+PENDENCIAS_SERVICO_INVERNO = []
+
+
+def _norm_txt(v):
+    import unicodedata
+    t = unicodedata.normalize("NFD", str(v or "")).encode("ascii", "ignore").decode()
+    return " ".join(t.upper().split())
+
+
+def _cultura_por_texto(valor):
+    """'aveia preta' / 'AVEIA  PRETA' -> 'Aveia Preta' (só culturas conhecidas)."""
+    alvo = _norm_txt(valor)
+    for cultura in CULTURAS_INVERNO.values():
+        if _norm_txt(cultura) == alvo:
+            return cultura
+    return None
+
+
+def _indice_cultivar_culturas(lots_inverno, cv_meta):
+    """cultivar normalizado -> conjunto de culturas vistas (lotes próprios + cadastro)."""
+    idx = defaultdict(set)
+    for l in lots_inverno or []:
+        if l.get("cultivar") and l.get("cultura"):
+            idx[_norm_txt(l["cultivar"])].add(l["cultura"])
+    for cv, meta in (cv_meta or {}).items():
+        cult = meta.get("cultura") if isinstance(meta, dict) else meta
+        if cult:
+            idx[_norm_txt(cv)].add(cult)
+    return idx
+
+
+def parse_inverno_servico(buf, lots_inverno, cv_meta):
+    """Lê as abas de prestação de serviço. Cultura por lote: 1º a coluna
+    CULTURA (se existir e estiver preenchida); senão o cadastro de cultivar,
+    só quando a correspondência é exata e de UMA cultura. Sem confirmação, a
+    linha entra com cultura vazia e pendência para conferência. Linha sem
+    CULTIVAR não é importada (mesma regra das abas próprias)."""
+    wb = openpyxl.load_workbook(buf, data_only=True)
+    out = []
+    PENDENCIAS_SERVICO_INVERNO.clear()
+    idx_cv = _indice_cultivar_culturas(lots_inverno, cv_meta)
+    proprios = {(_norm_txt(l.get("cultura")), _norm_txt(l.get("lote"))) for l in lots_inverno or [] if l.get("lote")}
+    vistos = set()
+
+    for nome_aba, empresa in ABAS_SERVICO_INVERNO.items():
+        ws = _achar_aba_inverno(wb, nome_aba)
+        if ws is None:
+            log(f"  aviso: aba '{nome_aba}' (prestação de serviço) não encontrada — ignorando")
+            continue
+        header = [ws.cell(1, c).value for c in range(1, ws.max_column + 1)]
+        col_norm = {_norm_aba(h): i + 1 for i, h in enumerate(header) if h}
+
+        def cell(r, *nomes, _col_norm=col_norm):
+            for nome in nomes:
+                i = _col_norm.get(_norm_aba(nome))
+                if i:
+                    v = ws.cell(r, i).value
+                    if v is not None:
+                        return v
+            return None
+
+        n = 0
+        for r in range(2, ws.max_row + 1):
+            cultivar = cell(r, "CULTIVAR")
+            if not cultivar:
+                continue
+            cultivar = str(cultivar).strip()
+            lote = cell(r, "LOTE DE ORIGEM", "LOTE")
+            lote = str(lote).strip() if lote else None
+            pend = []
+
+            cultura, fonte_cultura = None, None
+            bruto_cultura = cell(r, "CULTURA")
+            if bruto_cultura not in (None, ""):
+                cultura = _cultura_por_texto(bruto_cultura)
+                fonte_cultura = "planilha" if cultura else None
+                if not cultura:
+                    pend.append(f"cultura '{bruto_cultura}' não reconhecida")
+            else:
+                candidatas = idx_cv.get(_norm_txt(cultivar), set())
+                if len(candidatas) == 1:
+                    cultura, fonte_cultura = next(iter(candidatas)), "cadastro de cultivar"
+                elif len(candidatas) > 1:
+                    pend.append("cultivar com mais de uma cultura no cadastro — conferir")
+                else:
+                    pend.append("cultura a confirmar (sem coluna CULTURA e cultivar fora do cadastro)")
+
+            kg = to_float(cell(r, *CABECALHOS_PESO_INVERNO))
+            quant = to_float(cell(r, "QUANT."))
+            embalagem = cell(r, "EMBALAGEM")
+            peso_bag = to_float(embalagem)
+            if kg is None:
+                pend.append("sem peso do lote")
+            elif quant and peso_bag and abs(quant * peso_bag - kg) > 0.5:
+                pend.append(f"peso {kg:g} kg ≠ {quant:g} × {peso_bag:g} kg")
+
+            chave = (empresa, _norm_txt(cultura), _norm_txt(lote))
+            if lote and chave in vistos:
+                pend.append("lote repetido na aba — não importado de novo")
+                PENDENCIAS_SERVICO_INVERNO.append(f"{empresa} / {lote} (linha {r}): " + "; ".join(pend))
+                continue
+            vistos.add(chave)
+            if lote and cultura and (_norm_txt(cultura), _norm_txt(lote)) in proprios:
+                pend.append("mesmo código de lote existe na produção própria — conferir")
+
+            germ = to_float(cell(r, *GERMINACAO_COL_INVERNO.get(cultura, GERMINACAO_COL_PADRAO_INVERNO)))
+            status = None if germ is None else ("Aprovado" if germ >= GERMINACAO_MINIMA_INVERNO else "Reprovado")
+            data = cell(r, "DATA")
+            data = data.strftime("%d/%m/%Y") if hasattr(data, "strftime") else (str(data).strip() if data else None)
+            obs = cell(r, "OBSERVAÇÃO", "OBSERVACAO")
+
+            item = {
+                "empresa": empresa, "origem": ORIGEM_SERVICO,
+                "cultura": cultura, "fonte_cultura": fonte_cultura,
+                "cultivar": cultivar,
+                "categoria": str(cell(r, "CATEGORIA")).strip() if cell(r, "CATEGORIA") else None,
+                "lote": lote, "data": data,
+                "bags": quant, "kg": kg, "peso_bag": peso_bag,
+                "embalagem": str(embalagem).strip() if embalagem else None,
+                "germinacao": germ, "status": status,
+                "observacao": str(obs).strip() if obs else None,
+                "pendencia": "; ".join(pend) or None,
+            }
+            if pend:
+                PENDENCIAS_SERVICO_INVERNO.append(f"{empresa} / {lote or '(sem lote)'} (linha {r}): " + "; ".join(pend))
+            out.append(item)
+            n += 1
+        log_detalhe(f"  Serviço/{empresa}: {n} lotes")
+
+    if PENDENCIAS_SERVICO_INVERNO:
+        log(f"  aviso: {len(PENDENCIAS_SERVICO_INVERNO)} lote(s) de prestação de serviço para conferência (campo pendencia)")
+        for p in PENDENCIAS_SERVICO_INVERNO[:30]:
+            log_detalhe(f"    - {p}")
+    return out
+
+
 def _cv_meta_inverno_index(lots_inverno):
     """Cultivar (nome completo, como aparece nas abas de cultura) -> cultura.
     Usado pra descobrir a cultura de um lote de Colheita/Comprados, cujos
@@ -1295,6 +1438,7 @@ def atualizar_dados(lots, summary, pms_cv, comprados, benef, nosso_plantio, inve
         novos["NOSSO_PLANTIO_INVERNO"] = inverno["colheita"]
         novos["LOTES_COMPRADOS_INVERNO"] = inverno["comprados"]
         novos["CV_META_INVERNO"] = inverno["cv_meta"]
+        novos["LOTS_SERVICO_INVERNO"] = inverno.get("servico") or []
         if inverno.get("benef") is not None:
             novos["BENEF_INVERNO"] = inverno["benef"]
         else:
@@ -1636,6 +1780,10 @@ def main():
 
             cv_meta_atual_inverno = cv_meta_inverno_publicado()
             cv_meta_inverno = montar_cv_meta_inverno(lots_inverno, cv_meta_atual_inverno)
+            # prestação de serviço (PGW...): conjunto separado; NÃO entra no
+            # cadastro próprio nem em nenhum total da produção
+            buf_analises_inverno.seek(0)
+            servico_inverno = parse_inverno_servico(buf_analises_inverno, lots_inverno, cv_meta_atual_inverno)
 
             # BENEF_INVERNO NÃO é feito por este robô: a planilha oficial fica
             # no servidor da empresa e quem grava é o sincronizador do
@@ -1649,7 +1797,7 @@ def main():
             inverno = {
                 "lots": lots_inverno, "colheita": colheita_inverno,
                 "comprados": comprados_inverno, "cv_meta": cv_meta_inverno,
-                "benef": benef_inverno,
+                "benef": benef_inverno, "servico": servico_inverno,
             }
             log_detalhe(f"  Inverno: {len(lots_inverno)} lotes · {len(colheita_inverno)} colheita · "
                 f"{len(comprados_inverno)} comprados · {len(cv_meta_inverno)} cultivares")
