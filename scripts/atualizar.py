@@ -732,12 +732,20 @@ def _achar_aba_inverno(wb, nome_aba):
     return None
 
 
+# Cabeçalhos aceitos para o PESO TOTAL do lote nas abas de análises (comparados
+# em maiúsculas, sem espaço nas pontas). A planilha usa nomes diferentes por aba.
+CABECALHOS_PESO_INVERNO = ["PESO LOTE", "TOTAL", "KG DO LOTE"]
+PENDENCIAS_PESO_INVERNO = []
+
+
 def parse_inverno_lotes(buf):
     """Lê as abas de cultura (uma por cultura) da planilha ANALISES_INVERNO.
-    Cada lote vira uma entrada com cultura, cultivar, lote, categoria, kg,
-    embalagem e germinação oficial — e a aprovação binária (>=90%)."""
+    Cada lote vira uma entrada com cultura, cultivar, lote, categoria, kg
+    (peso total), bags (QUANT.), peso por bag, embalagem e germinação oficial
+    — e a aprovação binária (>=90%). Linha sem CULTIVAR não é importada."""
     wb = openpyxl.load_workbook(buf, data_only=True)
     out = []
+    PENDENCIAS_PESO_INVERNO.clear()
 
     for nome_aba, cultura in CULTURAS_INVERNO.items():
         ws = _achar_aba_inverno(wb, nome_aba)
@@ -779,15 +787,23 @@ def parse_inverno_lotes(buf):
             else:
                 status = None
 
-            # "QUANT." é a contagem de embalagens (ex.: 28 big bags), não o
-            # peso — o peso total do lote vem de "PESO LOTE". Usar QUANT.
-            # direto aqui subestimava o KG em várias vezes (28 em vez de
-            # 28.000, por exemplo). Mantém QUANT. como fallback só pro caso
-            # de algum lote antigo não ter "PESO LOTE" preenchido.
-            peso_lote = to_float(cell(r, "PESO LOTE"))
+            # Peso total do lote: o cabeçalho varia entre as abas ("PESO LOTE",
+            # "TOTAL", "kg do lote"). "QUANT." é SEMPRE a quantidade de
+            # embalagens (ex.: 20 big bags) e nunca vira peso: antes, sem
+            # "PESO LOTE", o robô gravava QUANT. no kg (20 em vez de 12.000).
+            # Sem peso, kg fica vazio e o lote entra na lista de pendências.
+            kg = to_float(cell(r, *CABECALHOS_PESO_INVERNO))
             quant = to_float(cell(r, "QUANT."))
-            kg = peso_lote if peso_lote is not None else quant
             embalagem = cell(r, "EMBALAGEM")
+            peso_bag = to_float(embalagem)   # na planilha, EMBALAGEM = kg por bag (ex.: 600)
+            pendencia = None
+            lote_txt = cell(r, "LOTE DE ORIGEM", "LOTE")
+            if kg is None:
+                pendencia = "sem peso do lote"
+            elif quant and peso_bag and abs(quant * peso_bag - kg) > 0.5:
+                pendencia = f"peso {kg:g} kg ≠ {quant:g} × {peso_bag:g} kg"
+            if pendencia:
+                PENDENCIAS_PESO_INVERNO.append(f"{cultura} / {lote_txt or '(sem lote)'} (linha {r}): {pendencia}")
 
             out.append({
                 "cultura": cultura,
@@ -796,6 +812,9 @@ def parse_inverno_lotes(buf):
                 "lote": str(cell(r, "LOTE DE ORIGEM", "LOTE")).strip() if cell(r, "LOTE DE ORIGEM", "LOTE") else None,
                 "data": data,
                 "kg": kg,
+                "bags": quant,
+                "peso_bag": peso_bag,
+                "pendencia_peso": pendencia,
                 "embalagem": str(embalagem).strip() if embalagem else None,
                 "germinacao": germ,
                 "status": status,
@@ -804,6 +823,11 @@ def parse_inverno_lotes(buf):
 
         log_detalhe(f"  Inverno/{cultura}: {n_lote} lotes")
 
+    if PENDENCIAS_PESO_INVERNO:
+        # log público só com a contagem (repositório público); lotes e pesos só no detalhado
+        log(f"  aviso: {len(PENDENCIAS_PESO_INVERNO)} lote(s) de Inverno com peso pendente (campo pendencia_peso)")
+        for p in PENDENCIAS_PESO_INVERNO[:30]:
+            log_detalhe(f"    - {p}")
     return out
 
 
