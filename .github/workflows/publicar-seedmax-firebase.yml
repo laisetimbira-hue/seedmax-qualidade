@@ -33,7 +33,10 @@ jobs:
           mkdir -p .hosting-public
           mkdir -p .hosting-public/qualidade
           cp index.html .hosting-public/qualidade/index.html
-          cp portal-home.html .hosting-public/index.html\n          grep -q 'id="portal-form"' .hosting-public/index.html\n          grep -q 'href="/tsi/"' .hosting-public/index.html\n          grep -q 'href="/rastrel/"' .hosting-public/index.html
+          cp portal-home.html .hosting-public/index.html
+          grep -q 'id="portal-form"' .hosting-public/index.html
+          grep -q 'href="/tsi/"' .hosting-public/index.html
+          grep -q 'href="/rastrel/"' .hosting-public/index.html
           ARQUIVOS=(
             ponte/config.js
             ponte/config.js.bak
