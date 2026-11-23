@@ -732,6 +732,40 @@ def _achar_aba_inverno(wb, nome_aba):
     return None
 
 
+def _extrair_analises_inverno(ws, linha, cabecalho):
+    """Preserva resultados laboratoriais da planilha, inclusive PH, PMS e vigor.
+
+    As chaves usam os nomes reais das colunas. Valores vazios nao aparecem.
+    Nao inclui colunas administrativas ou de identificacao.
+    """
+    criterios = (
+        "PMS", "GERMIN", "VIGOR", "PUREZA", "TETRAZ", "UMIDADE",
+        "MATERIAL INERTE", "OUTRAS ESPEC", "OUTRAS CULTIV", "DANO",
+        "ESPECIES", "ESPECÍES", "PENEIRA", "PH "
+    )
+    analises = {}
+    for coluna, rotulo in enumerate(cabecalho, 1):
+        if rotulo is None:
+            continue
+        titulo = str(rotulo).strip()
+        normal = _norm_aba(titulo)
+        nome_plano = normal.replace("Á", "A").replace("É", "E").replace("Ç", "C")
+        if not (normal in ("PH", "P.H.", "P.H", "PESO HECTOLITRICO", "PESO HECTOLÍTRICO")
+                or any(p in nome_plano for p in criterios)):
+            continue
+        valor = ws.cell(linha, coluna).value
+        if valor is None or isinstance(valor, bool) or not str(valor).strip():
+            continue
+        if isinstance(valor, (int, float)):
+            valor = round(float(valor), 4)
+        elif hasattr(valor, "strftime"):
+            valor = valor.strftime("%d/%m/%Y")
+        else:
+            valor = str(valor).strip()
+        analises[titulo] = valor
+    return analises
+
+
 def parse_inverno_lotes(buf):
     """Lê as abas de cultura (uma por cultura) da planilha ANALISES_INVERNO.
     Cada lote vira uma entrada com cultura, cultivar, lote, categoria, kg,
@@ -799,6 +833,7 @@ def parse_inverno_lotes(buf):
                 "embalagem": str(embalagem).strip() if embalagem else None,
                 "germinacao": germ,
                 "status": status,
+                "analises": _extrair_analises_inverno(ws, r, header),
             })
             n_lote += 1
 
@@ -909,6 +944,7 @@ def parse_inverno_pgw(buf, lots_inverno):
             "status": ("Aprovado" if germ >= GERMINACAO_MINIMA_INVERNO else "Reprovado") if germ is not None else None,
             "observacao": str(cell(r, "OBSERVAÇÃO")).strip() if cell(r, "OBSERVAÇÃO") else None,
             "pendencia": "; ".join(pendencias) if pendencias else None,
+            "analises": _extrair_analises_inverno(ws, r, header),
         })
     log_detalhe(f"  Inverno/PGW: {len(out)} lotes")
     return out

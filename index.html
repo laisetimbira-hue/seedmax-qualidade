@@ -476,6 +476,38 @@ html {
   .inv-vazias .chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 16px 16px; }
   .inv-vazias .chip { border: 1px solid var(--borda); background: var(--bg3); border-radius: 999px; padding: 5px 12px; font-size: 0.82rem; color: var(--texto); }
   .inv-vazias .chip small { color: var(--texto2); }
+  /* INVERNO — escala tipografica coerente com a interface do Verao */
+  #safra-inverno .tab { font-size: 0.95rem; }
+  #safra-inverno .filter-bar input,
+  #safra-inverno .filter-bar select,
+  #safra-inverno .ld-btn { font-size: 0.88rem; }
+  #safra-inverno .count-badge,
+  #safra-inverno .ld-sel-txt { font-size: 0.82rem; }
+  #safra-inverno .kpi .label { font-size: 0.74rem; }
+  #safra-inverno .kpi .value,
+  #safra-inverno .inv-kpi-grid .kpi .value { font-size: 1.8rem; }
+  #safra-inverno .kpi .sub { font-size: 0.78rem; }
+  #safra-inverno .page table { font-size: 0.88rem; }
+  #safra-inverno .page table thead th,
+  #safra-inverno .page .invb-tabela th { font-size: 0.76rem; padding: 10px 9px; }
+  #safra-inverno .page table tbody td,
+  #safra-inverno .page .invb-tabela td { font-size: 0.88rem; padding: 10px 9px; }
+  #safra-inverno .inv-lote-cod { font-size: 0.98rem; }
+  #safra-inverno .inv-selo { font-size: 0.8rem; }
+  #safra-inverno .inv-peso-alerta { font-size: 0.76rem; }
+  #safra-inverno .invb-lote-card { font-size: 0.88rem; }
+  #safra-inverno .invb-visao button { font-size: 0.88rem; }
+  #safra-inverno .invb-conferir > summary { font-size: 0.88rem; }
+  #safra-inverno .inv-resultado { font-variant-numeric:tabular-nums; font-weight:700; font-size:0.88rem; }
+  #safra-inverno .inv-analises-outros { display:flex; flex-wrap:wrap; gap:5px 10px; max-width:400px; white-space:normal; line-height:1.5; font-size:0.78rem; }
+  #safra-inverno .inv-analises-outros .campo { color:var(--texto2); font-size:0.76rem; }
+  #safra-inverno .inv-analises-outros strong { color:var(--texto); }
+  #safra-inverno .lotes-table-wrap { overflow-x:auto; }
+  @media(max-width:639px) {
+    #safra-inverno .page table thead th { font-size:0.73rem; }
+    #safra-inverno .page table tbody td { font-size:0.84rem; }
+  }
+
   .count-badge span { color: var(--accent); font-weight: 700; }
 
   /* ============================================
@@ -2452,6 +2484,7 @@ html {
               <th onclick="sortTableInvernoLotes('_bags')" class="num">Bags</th>
               <th onclick="sortTableInvernoLotes('_kg')" class="num">kg do lote</th>
               <th onclick="sortTableInvernoLotes('germinacao')" class="num">Germinação</th>
+              <th class="num">Vigor</th><th class="num">PMS (g)</th><th class="num">PH</th><th>Outras análises</th>
               <th onclick="sortTableInvernoLotes('_status')">Status</th>
               <th onclick="sortTableInvernoLotes('categoria')" class="col-hide-mobile">Categoria</th>
               <th onclick="sortTableInvernoLotes('data')" class="col-hide-mobile">Data</th>
@@ -2506,7 +2539,7 @@ html {
           <thead><tr>
             <th class="ld-selcol" title="Selecionar lotes para impressão">✓</th>
             <th>Lote</th><th>Cultivar</th><th>Cultura</th><th class="num">Bags</th><th class="num">kg do lote</th>
-            <th class="num">Germinação</th><th>Status</th><th class="col-hide-mobile">Categoria</th><th class="col-hide-mobile">Observação</th>
+            <th class="num">Germinação</th><th class="num">Vigor</th><th class="num">PMS (g)</th><th class="num">PH</th><th>Outras análises</th><th>Status</th><th class="col-hide-mobile">Categoria</th><th class="col-hide-mobile">Observação</th>
           </tr></thead>
           <tbody id="inv-pgw-tbody"></tbody>
         </table>
@@ -3257,8 +3290,8 @@ function filterInvernoServico() {
   const _sel = typeof ldSelServico !== 'undefined' ? ldSelServico : null;
   if (_sel) setTimeout(() => _sel.barra(), 0);
   const tb = document.getElementById('inv-pgw-tbody');
-  if (!dados.length) { tb.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:32px;color:var(--texto2);">Nenhum lote da PGW registrado ainda.</td></tr>'; return; }
-  if (!lista.length) { tb.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:32px;color:var(--texto2);">Nenhum lote encontrado com os filtros selecionados.</td></tr>'; return; }
+  if (!dados.length) { tb.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:32px;color:var(--texto2);">Nenhum lote da PGW registrado ainda.</td></tr>'; return; }
+  if (!lista.length) { tb.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:32px;color:var(--texto2);">Nenhum lote encontrado com os filtros selecionados.</td></tr>'; return; }
   const e = invBenefEsc;
   tb.innerHTML = lista.map(l => `
     <tr${_sel ? _sel.linhaClasse(l) : ''}>
@@ -3270,6 +3303,10 @@ function filterInvernoServico() {
       <td class="num">${l.bags != null ? Number(l.bags).toLocaleString('pt-BR') : '—'}</td>
       <td class="num" style="font-weight:700;">${invFmtKg(l.kg)}${l.pendencia ? `<span class="inv-peso-alerta">⚠ ${e(l.pendencia)}</span>` : ''}</td>
       <td class="num" style="color:${l.germinacao != null ? '#15803D' : 'var(--texto2)'};">${l.germinacao != null ? l.germinacao + '%' : 'aguardando'}</td>
+      <td class="num">${invAnaliseCelula(l, 'vigor')}</td>
+      <td class="num">${invAnaliseCelula(l, 'pms')}</td>
+      <td class="num">${invAnaliseCelula(l, 'ph')}</td>
+      <td>${invAnalisesOutras(l)}</td>
       <td>${invSelo(l)}</td>
       <td class="col-hide-mobile">${(() => { const f = invPgwFontes(l).categoria; return (e(l.categoria) || '—') + (f.diverge ? `<span class="inv-peso-alerta">⚠ Benef.: ${e(f.benef.join(', '))}</span>` : ''); })()}</td>
       <td class="col-hide-mobile">${e(l.observacao) || ''}</td>
@@ -3359,6 +3396,47 @@ function invIrLotesPendentes() {
   if (st) { st.value = 'Pendente'; filterInvernoLotes(); }
 }
 
+// Resultados laboratoriais do Inverno na mesma linha, sem abrir detalhes.
+function invAnaliseNormalizar(nome) {
+  return String(nome || '').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/\s+/g,' ').trim();
+}
+function invAnaliseCampos(l) {
+  return Object.entries(l.analises || {}).filter(([,v]) => v !== null && v !== undefined && v !== '');
+}
+function invAnaliseSelecionar(l, tipo) {
+  const entradas = invAnaliseCampos(l);
+  const rx = {
+    vigor: /VIGOR/,
+    pms: /\bPMS\b|PESO DE MIL SEMENTES/,
+    ph: /^(?:PH|P\.?H\.?)(?:\s|[(/.-]|$)|PESO HECTOLITRICO/,
+  }[tipo];
+  const encontradas = entradas.filter(([chave]) => rx.test(invAnaliseNormalizar(chave)));
+  // Quando houver valores oficial e UCS, dar preferencia ao oficial.
+  const oficial = encontradas.find(([nome]) => invAnaliseNormalizar(nome).includes('OFICIAL'));
+  return oficial || encontradas[0] || null;
+}
+function invAnaliseFormatar(valor) {
+  if (valor === null || valor === undefined || valor === '') return '—';
+  return typeof valor === 'number'
+    ? valor.toLocaleString('pt-BR', {maximumFractionDigits:4})
+    : String(valor);
+}
+function invAnaliseCelula(l, tipo) {
+  const item = invAnaliseSelecionar(l, tipo);
+  return item ? '<span class="inv-resultado">' + invBenefEsc(invAnaliseFormatar(item[1])) + '</span>' : '—';
+}
+function invAnalisesOutras(l) {
+  const e = invBenefEsc;
+  const destacadas = new Set(['vigor','pms','ph'].map(t => invAnaliseSelecionar(l,t)).filter(Boolean).map(a => a[0]));
+  const outras = invAnaliseCampos(l).filter(([nome]) =>
+    !destacadas.has(nome) && !/GERMIN/.test(invAnaliseNormalizar(nome))
+  );
+  if (!outras.length) return '—';
+  return '<div class="inv-analises-outros">' + outras.map(([nome,valor]) =>
+    '<span><span class="campo">' + e(nome) + ':</span> <strong>' + e(invAnaliseFormatar(valor)) + '</strong></span>'
+  ).join('') + '</div>';
+}
+
 // -------- LOTES DETALHADOS --------
 let filteredInvernoLotes = [];
 let sortKeyInvernoLotes = null;
@@ -3444,14 +3522,14 @@ function renderInvernoLotesTable() {
   if (_ldSel) setTimeout(() => _ldSel.barra(), 0);
   const esc = typeof invBenefEsc === 'function' ? invBenefEsc : (v => v);
   if (!LOTS_INVERNO.length) {
-    document.getElementById('inverno-lotes-tbody').innerHTML = `<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--texto2);">Nenhum lote de Inverno registrado ainda.</td></tr>`;
+    document.getElementById('inverno-lotes-tbody').innerHTML = `<tr><td colspan="13" style="text-align:center;padding:32px;color:var(--texto2);">Nenhum lote de Inverno registrado ainda.</td></tr>`;
     return;
   }
   if (!filteredInvernoLotes.length) {
     document.getElementById('inverno-lotes-tbody').innerHTML = `<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--texto2);">Nenhum lote encontrado com os filtros selecionados.</td></tr>`;
     return;
   }
-  document.getElementById('inverno-lotes-tbody').innerHTML = filteredInvernoLotes.map(l => {
+  document.getElementById('inverno-lotes-tbody').innerHTML = filteredInvernoLotes.map((l, i) => {
     const p = pesoLoteInverno(l);
     return `
     <tr${_ldSel ? _ldSel.linhaClasse(l) : ''}>
@@ -3461,6 +3539,10 @@ function renderInvernoLotesTable() {
       <td class="num">${p.bags != null ? p.bags.toLocaleString('pt-BR') : '—'}</td>
       <td class="num" style="font-weight:700;">${invFmtKg(p.kg)}${p.alerta ? `<span class="inv-peso-alerta" title="${esc(p.alerta)}">⚠ ${esc(p.alerta)}</span>` : ''}</td>
       <td class="num" style="color:${l.germinacao != null ? '#15803D' : 'var(--texto2)'};font-weight:${l.germinacao != null ? '700' : '400'};">${l.germinacao != null ? l.germinacao + '%' : 'aguardando'}</td>
+      <td class="num">${invAnaliseCelula(l, 'vigor')}</td>
+      <td class="num">${invAnaliseCelula(l, 'pms')}</td>
+      <td class="num">${invAnaliseCelula(l, 'ph')}</td>
+      <td>${invAnalisesOutras(l)}</td>
       <td>${invSelo(l)}</td>
       <td class="col-hide-mobile">${esc(l.categoria) || '—'}</td>
       <td class="col-hide-mobile">${esc(l.data) || '—'}</td>
@@ -3799,7 +3881,7 @@ function renderInvernoPlantioTable() {
     return;
   }
   if (!filteredInvernoPlantio.length) {
-    document.getElementById('inverno-plantio-tbody').innerHTML = `<tr><td colspan="9" style="text-align:center;padding:32px;color:var(--texto2);">Nenhum lote encontrado com os filtros selecionados.</td></tr>`;
+    document.getElementById('inverno-plantio-tbody').innerHTML = `<tr><td colspan="13" style="text-align:center;padding:32px;color:var(--texto2);">Nenhum lote encontrado com os filtros selecionados.</td></tr>`;
     return;
   }
   document.getElementById('inverno-plantio-tbody').innerHTML = filteredInvernoPlantio.map(l => `
