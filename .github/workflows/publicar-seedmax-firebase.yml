@@ -30,7 +30,9 @@ jobs:
           set -euo pipefail
           test -s index.html
           mkdir -p .hosting-public
-          cp index.html .hosting-public/index.html
+          mkdir -p .hosting-public/qualidade
+          cp index.html .hosting-public/qualidade/index.html
+          cp portal-home.html .hosting-public/index.html
           ARQUIVOS=(
             ponte/config.js
             ponte/config.js.bak
@@ -53,10 +55,10 @@ jobs:
             test -s ".hosting-public/$arquivo" || { echo "ERRO: $arquivo vazio"; exit 1; }
             echo "Preservado: $arquivo"
           done
-          [ "$(find .hosting-public -type f | wc -l)" -eq 13 ] || exit 1
-          cmp -s index.html .hosting-public/index.html
-          grep -q 'Inverno no padrão visual da Soja' .hosting-public/index.html
-          echo 'Pacote verificado: 13 arquivos; novo layout presente'
+          [ "$(find .hosting-public -type f | wc -l)" -eq 14 ] || exit 1
+          cmp -s index.html .hosting-public/qualidade/index.html
+          grep -q 'Inverno no padrão visual da Soja' .hosting-public/qualidade/index.html
+          echo 'Pacote verificado: 14 arquivos; Portal e Qualidade separados'
           cat > .firebase-hosting-ci.json <<'EOF'
           {
             "hosting": {
@@ -121,7 +123,9 @@ jobs:
           set -euo pipefail
           curl --fail --silent --show-error --location --retry 5 \
             "https://app.seedmax.com.br/index.html?verificacao=${GITHUB_RUN_ID}" -o /tmp/seedmax-online.html
-          cmp -s /tmp/seedmax-online.html .hosting-public/index.html || {
+          cmp -s /tmp/seedmax-online.html .hosting-public/index.html
+          curl --fail --silent --show-error --location "https://app.seedmax.com.br/qualidade/index.html?verificacao=${GITHUB_RUN_ID}" -o /tmp/seedmax-qualidade-online.html
+          cmp -s /tmp/seedmax-qualidade-online.html .hosting-public/qualidade/index.html || {
             echo 'AVISO: HTML publicado diferente do pacote - revisar a release.'
             exit 1
           }
