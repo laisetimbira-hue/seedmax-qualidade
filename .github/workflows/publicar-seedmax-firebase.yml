@@ -1,0 +1,121 @@
+name: SeedMAX - validar e publicar Hosting
+
+on:
+  pull_request:
+    paths:
+      - index.html
+      - .github/workflows/publicar-seedmax-firebase.yml
+  workflow_dispatch:
+    inputs:
+      confirmar:
+        description: 'Digite PUBLICAR para enviar a tela principal ao Firebase'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: seedmax-hosting
+  cancel-in-progress: false
+
+jobs:
+  preparar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preparar tela nova e preservar os modulos atuais
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s index.html
+          mkdir -p .hosting-public
+          cp index.html .hosting-public/index.html
+          ARQUIVOS=(
+            ponte/config.js
+            ponte/config.js.bak
+            ponte/index.html
+            ponte/ponte-emissor.js
+            ponte/ponte-entrada.js
+            ponte/ponte-sair.js
+            portal/modulos-seedmax.js
+            portal/sessao-home.js
+            portal/sessao-home.js.bak
+            portal/shell-modulos.js
+            rastrel/index.html
+            tsi/index.html
+          )
+          for arquivo in "${ARQUIVOS[@]}"; do
+            mkdir -p ".hosting-public/$(dirname "$arquivo")"
+            curl --fail --silent --show-error --location --retry 3 \
+              "https://seedmax-4c755.web.app/$arquivo" \
+              --output ".hosting-public/$arquivo"
+            test -s ".hosting-public/$arquivo" || { echo "ERRO: $arquivo vazio"; exit 1; }
+            echo "Preservado: $arquivo"
+          done
+          [ "$(find .hosting-public -type f | wc -l)" -eq 13 ] || exit 1
+          cmp -s index.html .hosting-public/index.html
+          grep -q 'Inverno no padrão visual da Soja' .hosting-public/index.html
+          echo 'Pacote verificado: 13 arquivos; novo layout presente'
+          cat > .firebase-hosting-ci.json <<'EOF'
+          {
+            "hosting": {
+              "site": "seedmax-4c755",
+              "public": ".hosting-public",
+              "ignore": ["**/.*", "**/node_modules/**"],
+              "headers": [
+                {"source": "**", "headers": [{"key": "Cache-Control", "value": "no-cache"}]}
+              ]
+            }
+          }
+          EOF
+      - name: Guardar pacote para a publicacao
+        uses: actions/upload-artifact@v4
+        with:
+          name: pacote-seedmax-hosting
+          include-hidden-files: true
+          path: |
+            .hosting-public/
+            .firebase-hosting-ci.json
+          retention-days: 7
+
+  publicar:
+    needs: preparar
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.confirmar == 'PUBLICAR'
+    runs-on: ubuntu-latest
+    environment: producao-seedmax
+    steps:
+      - name: Conferir existencia de credencial autorizada
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        shell: bash
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo 'FALTA: secret FIREBASE_SERVICE_ACCOUNT (GitHub Settings > Secrets and variables > Actions).'
+            exit 1
+          fi
+      - name: Autenticar no Firebase
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Baixar pacote conferido
+        uses: actions/download-artifact@v4
+        with:
+          name: pacote-seedmax-hosting
+          path: .
+      - name: Publicar somente Firebase Hosting
+        run: npx --yes firebase-tools@15.34.2 deploy --only hosting --project seedmax-4c755 --config .firebase-hosting-ci.json --non-interactive
+      - name: Verificar se o novo HTML esta no ar
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --retry 5 \
+            "https://app.seedmax.com.br/index.html?verificacao=${GITHUB_RUN_ID}" -o /tmp/seedmax-online.html
+          cmp -s /tmp/seedmax-online.html .hosting-public/index.html || {
+            echo 'AVISO: HTML publicado diferente do pacote - revisar a release.'
+            exit 1
+          }
+          echo 'OK: site entregando HTML novo'
