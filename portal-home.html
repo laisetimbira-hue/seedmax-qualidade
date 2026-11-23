@@ -303,50 +303,54 @@
 }
 
 
-/* RESTAURACAO DA TELA ORIGINAL DO PORTAL SEEDMAX */
+
+/* REFINAMENTO FINAL — LOGIN SEEDMAX */
 #portal-acesso.portal-acesso:not([hidden]) {
   position: fixed;
   inset: 0;
   z-index: 99999;
   width: 100%;
-  height: 100dvh;
   max-width: none;
+  height: 100dvh;
   margin: 0;
-  padding: 45px clamp(24px, 5vw, 95px);
   border: 0;
   border-radius: 0;
+  padding: clamp(24px, 4vw, 60px);
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, .9fr);
+  grid-template-columns: minmax(0, 1.12fr) minmax(0, .88fr);
   align-items: center;
-  gap: clamp(30px, 6vw, 100px);
+  justify-content: center;
+  gap: clamp(38px, 5vw, 90px);
   overflow-y: auto;
   background:
-    radial-gradient(ellipse at 70% 40%, #26364e, transparent 75%),
-    linear-gradient(140deg, #17283f, #0b1528);
+    radial-gradient(ellipse at 35% 50%, rgba(20,78,132,.12), transparent 60%),
+    linear-gradient(135deg, #08172e, #0b2143 55%, #071730);
 }
 
 #portal-acesso .original-esquerda {
-  min-width: 0;
+  width: 100%;
+  max-width: 640px;
+  justify-self: end;
 }
 
 #portal-acesso .original-sobre {
-  color: #37bdec;
-  font: 700 12px 'IBM Plex Mono', monospace;
+  color: #38bdf8;
+  font: 600 11px 'IBM Plex Mono', monospace;
   letter-spacing: .22em;
   margin-bottom: 22px;
 }
 
 #portal-acesso .original-logo {
   font-family: 'Barlow Condensed', sans-serif;
-  font-size: clamp(105px, 13vw, 190px);
+  font-size: clamp(78px, 8.5vw, 116px);
   font-weight: 800;
-  line-height: .74;
-  letter-spacing: .02em;
-  background: linear-gradient(160deg, #74d6fa, #20b8ed, #0c91db);
+  line-height: .88;
+  letter-spacing: .015em;
+  margin: 0 0 23px;
+  background: linear-gradient(180deg, #66d5fa, #1fbaf0 55%, #1399e6);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  margin-bottom: 35px;
 }
 
 #portal-acesso .original-logo span {
@@ -354,32 +358,35 @@
 }
 
 #portal-acesso .original-logo span + span {
-  margin-top: 17px;
-  letter-spacing: .14em;
+  margin-top: 5px;
+  letter-spacing: .12em;
 }
 
 #portal-acesso .original-descricao {
-  max-width: 540px;
-  color: #d1dbe9;
-  font-size: clamp(16px, 1.5vw, 20px);
-  line-height: 1.5;
-  margin: 0 0 35px;
+  max-width: 480px;
+  margin: 0 0 27px;
+  color: #d3deec;
+  font-size: clamp(14px, 1.25vw, 17px);
+  line-height: 1.55;
 }
 
 #portal-acesso .original-mini-modulos {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
+  max-width: 590px;
 }
 
 #portal-acesso .original-mini {
   position: relative;
   min-width: 0;
-  padding: 17px 12px;
-  background: rgba(45, 59, 82, .65);
-  border: 1px solid rgba(170, 193, 220, .14);
-  border-radius: 12px;
+  min-height: 82px;
+  padding: 14px 12px;
   overflow: hidden;
+  border-radius: 13px;
+  background: rgba(24,48,79,.70);
+  border: 1px solid rgba(115,160,205,.20);
+  box-shadow: 0 5px 18px rgba(0,0,0,.10);
 }
 
 #portal-acesso .original-mini::before {
@@ -388,7 +395,7 @@
   left: 0;
   top: 0;
   bottom: 0;
-  width: 4px;
+  width: 3px;
   background: var(--cor);
 }
 
@@ -399,69 +406,67 @@
 #portal-acesso .original-mini strong {
   display: block;
   color: #f3f7fc;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 #portal-acesso .original-mini small {
   display: block;
-  margin-top: 7px;
-  color: #a0afc5;
-  font-size: 11px;
-  line-height: 1.4;
+  margin-top: 6px;
+  color: #a3b4ca;
+  font-size: 10.5px;
+  line-height: 1.35;
 }
 
 #portal-acesso .original-rodape {
   margin-top: 55px;
-  font: 10px 'IBM Plex Mono', monospace;
+  color: #7188a8;
+  font: 9px 'IBM Plex Mono', monospace;
   letter-spacing: .24em;
-  color: #7e91ad;
 }
 
 #portal-acesso .original-cartao {
   position: relative;
-  overflow: hidden;
   width: 100%;
-  max-width: 540px;
-  justify-self: end;
-  padding: 43px clamp(25px, 3.5vw, 45px) 30px;
-  background: linear-gradient(155deg, #11517b, #0b2949 75%, #0b2039);
-  border: 1px solid #3b6285;
-  border-radius: 23px;
-  box-shadow: 0 25px 75px rgba(0,0,0,.3);
+  max-width: 450px;
+  padding: 32px 32px 24px;
+  justify-self: start;
+  overflow: hidden;
+  border-radius: 21px;
+  border: 1px solid rgba(77,145,199,.46);
+  background: linear-gradient(155deg, #103b67, #0b294d 55%, #091d39);
+  box-shadow: 0 20px 50px rgba(0,0,0,.20);
 }
 
 #portal-acesso .original-cartao::before {
   content: "";
   position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
+  inset: 0 0 auto;
   height: 4px;
-  background: linear-gradient(90deg, #18c8ef, #42d781 55%, #efae41);
+  background: linear-gradient(90deg, #22c6ef, #41d77f 55%, #f2b53e);
 }
 
 #portal-acesso .original-chip {
   display: inline-block;
-  color: #56cef8;
-  background: rgba(34, 174, 239, .12);
-  border: 1px solid rgba(63, 196, 249, .4);
+  padding: 7px 12px;
   border-radius: 999px;
-  padding: 8px 14px;
-  font: 700 11px 'IBM Plex Mono', monospace;
+  color: #57cefc;
+  border: 1px solid rgba(53,196,250,.48);
+  background: rgba(20,158,218,.12);
+  font: 700 10px 'IBM Plex Mono', monospace;
   letter-spacing: .12em;
 }
 
 #portal-acesso .original-cartao h1 {
-  margin: 20px 0 8px;
-  color: white;
-  font: 700 clamp(29px, 3vw, 39px) 'Barlow Condensed', sans-serif;
+  margin: 18px 0 7px;
+  color: #f5f9ff;
+  font: 700 30px 'Barlow Condensed', sans-serif;
 }
 
 #portal-acesso .original-ajuda {
-  color: #b3c4da;
-  font-size: 14px;
+  margin: 0 0 23px;
+  color: #b3c6de;
+  font-size: 13px;
   line-height: 1.5;
-  margin: 0 0 25px;
 }
 
 #portal-acesso #portal-form {
@@ -471,27 +476,27 @@
 }
 
 #portal-acesso #portal-form label {
-  margin: 5px 0 8px;
-  color: #bacce0;
-  font: 700 11px 'IBM Plex Mono', monospace;
+  margin: 5px 0 7px;
+  color: #b7c9df;
+  font: 600 10px 'IBM Plex Mono', monospace;
   letter-spacing: .13em;
 }
 
 #portal-acesso #portal-form input {
   width: 100%;
-  padding: 14px 15px;
-  margin: 0 0 18px;
-  background: rgba(8, 33, 59, .76);
-  color: white;
-  border: 1px solid #477395;
-  border-radius: 11px;
-  font: 15px 'Barlow', sans-serif;
+  padding: 12px 14px;
+  margin: 0 0 16px;
+  border-radius: 10px;
+  background: rgba(6,27,51,.67);
+  border: 1px solid #39618c;
+  color: #f2f7fd;
+  font: 14px 'Barlow', sans-serif;
   outline: none;
 }
 
 #portal-acesso #portal-form input:focus {
-  border-color: #31caf5;
-  box-shadow: 0 0 0 3px rgba(49, 202, 245, .16);
+  border-color: #36c5f3;
+  box-shadow: 0 0 0 3px rgba(54,197,243,.14);
 }
 
 #portal-acesso .login-senha {
@@ -499,83 +504,128 @@
 }
 
 #portal-acesso .login-senha input {
-  padding-right: 45px;
+  padding-right: 46px;
 }
 
 #portal-acesso #portal-ver-senha {
   position: absolute;
-  right: 7px;
-  top: 7px;
-  width: 36px;
-  height: 36px;
-  padding: 0;
+  top: 5px;
+  right: 6px;
+  width: 34px;
+  height: 34px;
   border: 0;
+  padding: 0;
   background: transparent;
-  color: #afcee3;
+  color: #a5c5e1;
   cursor: pointer;
 }
 
 #portal-acesso #portal-form .login-entrar {
   width: 100%;
-  margin-top: 2px;
-  padding: 16px;
-  color: #05283f;
+  margin-top: 3px;
+  padding: 13px 16px;
   border: 0;
-  border-radius: 11px;
-  background: linear-gradient(105deg, #28c9ec, #28a8f0);
-  font: 700 17px 'Barlow', sans-serif;
+  border-radius: 10px;
+  color: #052541;
+  background: linear-gradient(105deg, #29c5eb, #199cec);
+  font: 700 15px 'Barlow', sans-serif;
   cursor: pointer;
 }
 
 #portal-acesso #portal-form .login-entrar:hover {
-  filter: brightness(1.08);
+  filter: brightness(1.07);
 }
 
 #portal-acesso #portal-status {
-  margin-top: 12px;
-  font-size: 12px;
-  color: #c2d5e9;
+  min-height: 17px;
+  margin-top: 11px;
+  color: #b2c8df;
+  font-size: 11px;
 }
 
 #portal-acesso .original-cartao-rodape {
-  margin-top: 20px;
+  margin-top: 17px;
+  color: #94adc9;
   text-align: center;
-  color: #abc0d6;
-  font: 700 10px 'IBM Plex Mono', monospace;
-  letter-spacing: .12em;
+  font: 700 9px 'IBM Plex Mono', monospace;
+  letter-spacing: .10em;
 }
 
 @media (max-width: 900px) {
   #portal-acesso.portal-acesso:not([hidden]) {
     grid-template-columns: 1fr;
-    padding: 30px 18px;
+    justify-items: center;
     gap: 25px;
+    padding: 28px 18px;
   }
+
   #portal-acesso .original-esquerda {
+    max-width: 500px;
+    justify-self: center;
     text-align: center;
   }
-  #portal-acesso .original-logo {
-    font-size: clamp(75px, 18vw, 120px);
+
+  #portal-acesso .original-sobre {
+    font-size: 10px;
+    margin-bottom: 14px;
   }
+
+  #portal-acesso .original-logo {
+    font-size: clamp(72px, 16vw, 105px);
+    margin-bottom: 18px;
+  }
+
+  #portal-acesso .original-logo span + span {
+    margin-top: 5px;
+  }
+
   #portal-acesso .original-descricao {
     margin: 0 auto 20px;
-    font-size: 15px;
+    font-size: 14px;
   }
+
+  #portal-acesso .original-mini-modulos {
+    gap: 8px;
+  }
+
   #portal-acesso .original-mini {
-    padding: 12px 8px;
+    min-height: 70px;
+    padding: 11px 8px;
+    text-align: left;
   }
+
   #portal-acesso .original-mini strong {
-    font-size: 12px;
+    font-size: 11px;
   }
+
   #portal-acesso .original-mini small {
-    font-size: 10px;
+    font-size: 9px;
   }
+
   #portal-acesso .original-rodape {
     display: none;
   }
+
   #portal-acesso .original-cartao {
+    width: 100%;
+    max-width: 450px;
     justify-self: center;
-    padding: 28px 22px;
+    padding: 27px 22px 21px;
+  }
+}
+
+@media (min-width: 901px) and (max-height: 700px) {
+  #portal-acesso .original-logo {
+    font-size: clamp(75px, 7vw, 95px);
+  }
+
+  #portal-acesso .original-rodape {
+    margin-top: 25px;
+  }
+
+  #portal-acesso .original-cartao {
+    padding-top: 25px;
+    padding-bottom: 18px;
   }
 }
 
