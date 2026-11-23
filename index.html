@@ -476,37 +476,69 @@ html {
   .inv-vazias .chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 16px 16px; }
   .inv-vazias .chip { border: 1px solid var(--borda); background: var(--bg3); border-radius: 999px; padding: 5px 12px; font-size: 0.82rem; color: var(--texto); }
   .inv-vazias .chip small { color: var(--texto2); }
-  /* INVERNO — escala tipografica coerente com a interface do Verao */
+  /* INVERNO — mesmas dimensoes tipograficas do Verao */
   #safra-inverno .tab { font-size: 0.95rem; }
+
   #safra-inverno .filter-bar input,
-  #safra-inverno .filter-bar select,
-  #safra-inverno .ld-btn { font-size: 0.88rem; }
+  #safra-inverno .filter-bar select { font-size: 0.92rem; }
+
+  #safra-inverno .ld-btn { font-size: 0.82rem; }
+
   #safra-inverno .count-badge,
   #safra-inverno .ld-sel-txt { font-size: 0.82rem; }
-  #safra-inverno .kpi .label { font-size: 0.74rem; }
+
+  #safra-inverno .kpi .label { font-size: 0.72rem; }
   #safra-inverno .kpi .value,
   #safra-inverno .inv-kpi-grid .kpi .value { font-size: 1.8rem; }
-  #safra-inverno .kpi .sub { font-size: 0.78rem; }
-  #safra-inverno .page table { font-size: 0.88rem; }
+  #safra-inverno .kpi .sub { font-size: 0.72rem; }
+
+  #safra-inverno .page table { font-size: 0.70rem; }
+
   #safra-inverno .page table thead th,
-  #safra-inverno .page .invb-tabela th { font-size: 0.76rem; padding: 10px 9px; }
-  #safra-inverno .page table tbody td,
-  #safra-inverno .page .invb-tabela td { font-size: 0.88rem; padding: 10px 9px; }
-  #safra-inverno .inv-lote-cod { font-size: 0.98rem; }
-  #safra-inverno .inv-selo { font-size: 0.8rem; }
-  #safra-inverno .inv-peso-alerta { font-size: 0.76rem; }
-  #safra-inverno .invb-lote-card { font-size: 0.88rem; }
-  #safra-inverno .invb-visao button { font-size: 0.88rem; }
-  #safra-inverno .invb-conferir > summary { font-size: 0.88rem; }
-  #safra-inverno .inv-resultado { font-variant-numeric:tabular-nums; font-weight:700; font-size:0.88rem; }
-  #safra-inverno .inv-analises-outros { display:flex; flex-wrap:wrap; gap:5px 10px; max-width:400px; white-space:normal; line-height:1.5; font-size:0.78rem; }
-  #safra-inverno .inv-analises-outros .campo { color:var(--texto2); font-size:0.76rem; }
-  #safra-inverno .inv-analises-outros strong { color:var(--texto); }
-  #safra-inverno .lotes-table-wrap { overflow-x:auto; }
-  @media(max-width:639px) {
-    #safra-inverno .page table thead th { font-size:0.73rem; }
-    #safra-inverno .page table tbody td { font-size:0.84rem; }
+  #safra-inverno .page .invb-tabela th {
+    font-size: 0.68rem;
+    padding: 8px 7px;
   }
+
+  #safra-inverno .page table tbody td,
+  #safra-inverno .page .invb-tabela td {
+    font-size: 0.70rem;
+    padding: 7px 7px;
+  }
+
+  #safra-inverno .inv-lote-cod { font-size: 0.85rem; }
+  #safra-inverno .inv-selo { font-size: 0.78rem; }
+  #safra-inverno .inv-peso-alerta { font-size: 0.70rem; }
+  #safra-inverno .invb-lote-card { font-size: 0.78rem; }
+  #safra-inverno .invb-visao button { font-size: 0.80rem; }
+  #safra-inverno .invb-conferir > summary { font-size: 0.85rem; }
+
+  #safra-inverno .inv-resultado {
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    font-size: 0.70rem;
+  }
+
+  #safra-inverno .inv-analises-outros {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px 10px;
+    max-width: 400px;
+    white-space: normal;
+    line-height: 1.5;
+    font-size: 0.70rem;
+  }
+
+  #safra-inverno .inv-analises-outros .campo {
+    color: var(--texto2);
+    font-size: 0.68rem;
+  }
+
+  #safra-inverno .inv-analises-outros strong {
+    color: var(--texto);
+  }
+
+  #safra-inverno .lotes-table-wrap { overflow-x: auto; }
 
   .count-badge span { color: var(--accent); font-weight: 700; }
 
