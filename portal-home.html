@@ -629,6 +629,391 @@
   }
 }
 
+
+/* PREVIA FIEL — LOGIN SEEDMAX */
+#portal-acesso.portal-acesso:not([hidden]) {
+  grid-template-columns: minmax(0, 1.12fr) minmax(0, .88fr);
+  gap: clamp(38px, 5vw, 78px);
+  padding: 36px clamp(34px, 6vw, 95px);
+  background:
+    radial-gradient(ellipse 55% 65% at 65% 50%,
+      rgba(11,79,151,.24), transparent 95%),
+    radial-gradient(ellipse 60% 40% at 18% 100%,
+      rgba(24,75,154,.30), transparent 95%),
+    linear-gradient(125deg,#06152d 0%,#071b3e 55%,#061a38 100%);
+}
+#portal-acesso .original-esquerda {
+  max-width: 655px;
+}
+#portal-acesso .original-sobre {
+  font-size: 11px;
+  letter-spacing: .25em;
+  color: #37d0f4;
+  margin-bottom: 24px;
+}
+#portal-acesso .original-logo {
+  font-size: clamp(92px,9.6vw,136px);
+  line-height: .78;
+  margin-bottom: 27px;
+  background: linear-gradient(180deg,#70ddfa,#20bdf1 55%,#0798ed);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+#portal-acesso .original-logo span + span {
+  margin-top: 12px;
+  letter-spacing: .105em;
+}
+#portal-acesso .original-descricao {
+  font-size: clamp(15px,1.35vw,18px);
+  line-height: 1.55;
+  max-width: 510px;
+  margin-bottom: 36px;
+  color: #d5e0ed;
+}
+#portal-acesso .original-mini-modulos {
+  gap: 14px;
+  max-width: 655px;
+}
+#portal-acesso .original-mini {
+  min-height: 93px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 15px 13px;
+  border-radius: 14px;
+  background: linear-gradient(145deg,
+    rgba(26,60,101,.70),rgba(14,39,75,.74));
+  border: 1px solid rgba(85,148,208,.30);
+  box-shadow: 0 10px 25px rgba(0,0,0,.10),
+    inset 0 1px rgba(255,255,255,.035);
+}
+#portal-acesso .original-mini::before {
+  width: 4px;
+}
+#portal-acesso .mini-icone {
+  width: 41px;
+  height: 41px;
+  min-width: 41px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  color: var(--cor);
+  background: color-mix(in srgb,var(--cor) 12%,transparent);
+}
+#portal-acesso .mini-icone svg {
+  width: 23px;
+  height: 23px;
+}
+#portal-acesso .mini-texto {
+  min-width: 0;
+}
+#portal-acesso .original-mini strong {
+  font-size: 14px;
+  line-height: 1.2;
+}
+#portal-acesso .original-mini small {
+  font-size: 11px;
+  line-height: 1.4;
+  margin-top: 5px;
+  color: #b0c0d5;
+}
+#portal-acesso .original-rodape {
+  position: fixed;
+  left: 0;
+  bottom: clamp(22px,7vh,76px);
+  width: 100%;
+  margin: 0;
+  text-align: center;
+  font-size: 10px;
+  letter-spacing: .34em;
+  color: #93a8c7;
+  pointer-events: none;
+}
+#portal-acesso .original-cartao {
+  max-width: 462px;
+  padding: 35px 37px 26px;
+  border-radius: 22px;
+  border: 1px solid rgba(67,149,208,.55);
+  background: linear-gradient(155deg,
+    rgba(12,51,97,.93),rgba(5,30,65,.95));
+  box-shadow: 0 23px 62px rgba(0,0,0,.24),
+    inset 0 1px rgba(255,255,255,.045);
+}
+#portal-acesso .original-cartao::before {
+  height: 4px;
+}
+#portal-acesso .original-cartao h1 {
+  font: 700 27px 'Barlow',sans-serif;
+  letter-spacing: -.025em;
+  margin: 22px 0 7px;
+}
+#portal-acesso .original-ajuda {
+  font-size: 14px;
+  line-height: 1.5;
+  margin-bottom: 25px;
+}
+#portal-acesso #portal-form input {
+  padding: 13px 15px;
+  border-radius: 11px;
+  background: rgba(2,22,48,.75);
+  border: 1px solid rgba(94,150,201,.56);
+  font-size: 14px;
+  margin-bottom: 17px;
+}
+#portal-acesso #portal-form .login-entrar {
+  padding: 15px;
+  background: linear-gradient(105deg,#31d3ef,#0d99fa);
+  box-shadow: 0 9px 24px rgba(0,146,241,.15);
+}
+#portal-acesso .original-cartao-rodape {
+  margin-top: 19px;
+  font-size: 10px;
+  color: #70bce9;
+}
+@media (max-width:900px) {
+  #portal-acesso.portal-acesso:not([hidden]) {
+    grid-template-columns: 1fr;
+    padding: 28px 18px;
+    gap: 25px;
+  }
+  #portal-acesso .original-esquerda {
+    max-width: 520px;
+  }
+  #portal-acesso .original-logo {
+    font-size: clamp(75px,17vw,115px);
+  }
+  #portal-acesso .original-mini {
+    min-height: 77px;
+    gap: 7px;
+    padding: 10px 8px;
+  }
+  #portal-acesso .mini-icone {
+    width: 30px;
+    height: 30px;
+    min-width: 30px;
+  }
+  #portal-acesso .mini-icone svg {
+    width: 19px;
+    height: 19px;
+  }
+  #portal-acesso .original-mini strong {
+    font-size: 11px;
+  }
+  #portal-acesso .original-mini small {
+    font-size: 9px;
+  }
+  #portal-acesso .original-rodape {
+    position: static;
+    width: auto;
+    margin-top: 20px;
+    text-align: center;
+    font-size: 8px;
+  }
+  #portal-acesso .original-cartao {
+    max-width: 462px;
+    padding: 28px 23px;
+  }
+}
+
+
+
+/* AJUSTE DE ESCALA DA PREVIA — SEM DESFOQUE */
+@media (min-width: 901px) {
+  #portal-acesso.portal-acesso:not([hidden]) {
+    grid-template-columns: minmax(0, 1.12fr) minmax(0, .88fr);
+    gap: clamp(30px, 4vw, 65px);
+    padding: 30px clamp(40px, 7vw, 110px);
+  }
+
+  #portal-acesso .original-esquerda {
+    transform: none;
+    max-width: 575px;
+  }
+
+  #portal-acesso .original-logo {
+    font-size: clamp(81px, 8.4vw, 120px);
+    margin-bottom: 24px;
+  }
+
+  #portal-acesso .original-descricao {
+    font-size: 15px;
+    margin-bottom: 30px;
+  }
+
+  #portal-acesso .original-mini-modulos {
+    max-width: 575px;
+    gap: 11px;
+  }
+
+  #portal-acesso .original-mini {
+    min-height: 82px;
+    padding: 12px 11px;
+    gap: 10px;
+  }
+
+  #portal-acesso .mini-icone {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+  }
+
+  #portal-acesso .mini-icone svg {
+    width: 21px;
+    height: 21px;
+  }
+
+  #portal-acesso .original-mini strong {
+    font-size: 12px;
+  }
+
+  #portal-acesso .original-mini small {
+    font-size: 10px;
+  }
+
+  #portal-acesso .original-cartao {
+    transform: none;
+    max-width: 407px;
+    padding: 30px 32px 23px;
+  }
+
+  #portal-acesso .original-cartao h1 {
+    font-size: 24px;
+  }
+
+  #portal-acesso .original-ajuda {
+    font-size: 12px;
+    margin-bottom: 22px;
+  }
+
+  #portal-acesso #portal-form input {
+    font-size: 13px;
+    padding: 11px 13px;
+    margin-bottom: 15px;
+  }
+
+  #portal-acesso #portal-form .login-entrar {
+    font-size: 13px;
+    padding: 13px;
+  }
+
+  #portal-acesso .original-rodape {
+    font-size: 9px;
+    bottom: 25px;
+  }
+}
+
+
+/* LEGIBILIDADE DOS CARTOES */
+#portal-acesso .original-mini strong {
+  font-size: 14px !important;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+#portal-acesso .original-mini small {
+  font-size: 13px !important;
+  line-height: 1.4;
+  color: #c0d0e3;
+  margin-top: 5px;
+}
+
+@media (max-width: 600px) {
+  #portal-acesso .original-mini strong {
+    font-size: 12px !important;
+  }
+
+  #portal-acesso .original-mini small {
+    font-size: 11px !important;
+  }
+}
+
+
+/* AJUSTE FINO DO CARTAO DE LOGIN */
+@media (min-width: 901px) {
+  #portal-acesso .original-cartao {
+    width: 100%;
+    max-width: 380px !important;
+    padding: 25px 27px 19px !important;
+    transform: none !important;
+  }
+
+  #portal-acesso .original-cartao h1 {
+    margin: 15px 0 6px !important;
+    font-size: 24px !important;
+  }
+
+  #portal-acesso .original-ajuda {
+    margin-bottom: 17px !important;
+  }
+
+  #portal-acesso #portal-form input {
+    margin-bottom: 13px !important;
+  }
+
+  #portal-acesso .original-cartao-rodape {
+    margin-top: 13px !important;
+  }
+}
+
+
+/* REFINO DE TIPOGRAFIA E NITIDEZ */
+#portal-acesso {
+  -webkit-font-smoothing: auto;
+  text-rendering: optimizeLegibility;
+}
+
+#portal-acesso .original-descricao {
+  font-family: 'Barlow', Arial, sans-serif !important;
+  font-weight: 500 !important;
+  color: #e4edf8 !important;
+}
+
+#portal-acesso .original-mini strong {
+  font-family: 'Barlow', Arial, sans-serif !important;
+  font-weight: 700 !important;
+  color: #ffffff !important;
+}
+
+#portal-acesso .original-mini small {
+  font-family: 'Barlow', Arial, sans-serif !important;
+  font-weight: 500 !important;
+  color: #dce8f5 !important;
+}
+
+#portal-acesso .original-cartao h1 {
+  font-family: 'Barlow', Arial, sans-serif !important;
+  font-weight: 700 !important;
+  color: #ffffff !important;
+}
+
+#portal-acesso .original-ajuda {
+  font-family: 'Barlow', Arial, sans-serif !important;
+  font-weight: 500 !important;
+  color: #e0eaf5 !important;
+}
+
+#portal-acesso #portal-form label {
+  color: #d9e6f4 !important;
+  font-weight: 600 !important;
+}
+
+#portal-acesso #portal-form input {
+  font-family: 'Barlow', Arial, sans-serif !important;
+  font-weight: 500 !important;
+  color: #ffffff !important;
+}
+
+#portal-acesso #portal-form input::placeholder {
+  color: #b5c9df !important;
+  opacity: 1;
+}
+
+#portal-acesso .original-cartao-rodape {
+  color: #c2dcf2 !important;
+  font-weight: 700 !important;
+}
+
 </style>
 </head>
 <body>
@@ -659,16 +1044,13 @@
 
     <div class="original-mini-modulos">
       <div class="original-mini qualidade">
-        <strong>♧ &nbsp;Qualidade</strong>
-        <small>Análises, lotes e aprovação</small>
+        <span class="mini-icone" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v6l-5.5 9a2 2 0 0 0 1.7 3h11.6a2 2 0 0 0 1.7-3L14 9V3M7.5 15h9"/></svg></span><span class="mini-texto"><strong>Qualidade</strong><small>Análises, lotes e aprovação</small></span>
       </div>
       <div class="original-mini tsi">
-        <strong>⬡ &nbsp;TSI</strong>
-        <small>Tratamento industrial</small>
+        <span class="mini-icone" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 9 5v10l-9 5-9-5V7l9-5ZM3 7l9 5 9-5M12 12v10"/></svg></span><span class="mini-texto"><strong>TSI</strong><small>Tratamento industrial</small></span>
       </div>
       <div class="original-mini rastrel">
-        <strong>◉ &nbsp;RASTREL</strong>
-        <small>Rastreabilidade NFC</small>
+        <span class="mini-icone" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12a7 7 0 0 1 14 0M8 12a4 4 0 0 1 8 0M12 15v6M5 21h14"/><circle cx="12" cy="12" r="1"/></svg></span><span class="mini-texto"><strong>RASTREL</strong><small>Rastreabilidade NFC</small></span>
       </div>
     </div>
 
