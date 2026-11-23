@@ -848,6 +848,72 @@ def _inferir_cultura_inverno(cultivar_raw, idx_cultivar_cultura):
     return None
 
 
+def parse_inverno_pgw(buf, lots_inverno):
+    """Lê a aba PGW, sempre separada da produção própria."""
+    wb = openpyxl.load_workbook(buf, data_only=True)
+    ws = _achar_aba_inverno(wb, "PGW")
+    if ws is None:
+        log("  aviso: aba PGW não encontrada — preservando conjunto atual")
+        return None
+
+    header = [ws.cell(1, c).value for c in range(1, ws.max_column + 1)]
+    col_norm = {_norm_aba(h): i + 1 for i, h in enumerate(header) if h}
+    if "LOTE" not in col_norm or "CULTIVAR" not in col_norm:
+        raise ValueError("PGW: colunas LOTE e CULTIVAR são obrigatórias")
+
+    def cell(r, *nomes):
+        for nome in nomes:
+            idx = col_norm.get(_norm_aba(nome))
+            if idx:
+                v = ws.cell(r, idx).value
+                if v is not None and str(v).strip():
+                    return v
+        return None
+
+    idx_cultura = _cv_meta_inverno_index(lots_inverno)
+    out = []
+    for r in range(2, ws.max_row + 1):
+        lote, cultivar = cell(r, "LOTE"), cell(r, "CULTIVAR")
+        if not lote and not cultivar:
+            continue
+        if not lote or not cultivar:
+            raise ValueError(f"PGW: linha {r} sem lote ou cultivar")
+        data = cell(r, "DATA")
+        if hasattr(data, "strftime"):
+            data = data.strftime("%d/%m/%Y")
+        elif data is not None:
+            data = str(data).strip()
+        cultura_cel = cell(r, "CULTURA")
+        cultura = (str(cultura_cel).strip() if cultura_cel
+                   else _inferir_cultura_inverno(str(cultivar).strip(), idx_cultura))
+        germ = to_float(cell(r, "OFICIAL GERMINAÇÃO", "GERMINAÇÃO UCS %"))
+        vigor = to_float(cell(r, "OFICIAL VIGOR", "VIGOR UCS %"))
+        bags = to_float(cell(r, "QUANT."))
+        kg = to_float(cell(r, "kg do lote"))
+        pendencias = []
+        if not cultura:
+            pendencias.append("Cultura a confirmar")
+        if kg is None:
+            pendencias.append("Peso do lote a confirmar")
+        out.append({
+            "cultura": cultura,
+            "cultivar": str(cultivar).strip(),
+            "categoria": str(cell(r, "CATEGORIA")).strip() if cell(r, "CATEGORIA") else None,
+            "lote": str(lote).strip(),
+            "data": data,
+            "kg": kg,
+            "bags": int(bags) if bags is not None and float(bags).is_integer() else bags,
+            "embalagem": str(cell(r, "EMBALAGEM")).strip() if cell(r, "EMBALAGEM") else None,
+            "germinacao": germ,
+            "vigor": vigor,
+            "status": ("Aprovado" if germ >= GERMINACAO_MINIMA_INVERNO else "Reprovado") if germ is not None else None,
+            "observacao": str(cell(r, "OBSERVAÇÃO")).strip() if cell(r, "OBSERVAÇÃO") else None,
+            "pendencia": "; ".join(pendencias) if pendencias else None,
+        })
+    log_detalhe(f"  Inverno/PGW: {len(out)} lotes")
+    return out
+
+
 def parse_inverno_colheita(buf, lots_inverno):
     """Aba 'COLHEITA' — equivalente ao 'Nosso Plantio' da soja: matéria-prima
     da colheita própria chegando, antes de virar lote oficial classificado
@@ -1271,6 +1337,11 @@ def atualizar_dados(lots, summary, pms_cv, comprados, benef, nosso_plantio, inve
         novos["NOSSO_PLANTIO_INVERNO"] = inverno["colheita"]
         novos["LOTES_COMPRADOS_INVERNO"] = inverno["comprados"]
         novos["CV_META_INVERNO"] = inverno["cv_meta"]
+        if inverno.get("pgw") is not None:
+            store.aplicar_lot_ids(inverno["pgw"], store.SAFRA_INVERNO)
+            novos["LOTS_SERVICO_INVERNO"] = inverno["pgw"]
+        else:
+            log("  LOTS_SERVICO_INVERNO: preservado (aba PGW ausente)")
         if inverno.get("benef") is not None:
             novos["BENEF_INVERNO"] = inverno["benef"]
         else:
@@ -1609,6 +1680,8 @@ def main():
             colheita_inverno = parse_inverno_colheita(buf_analises_inverno, lots_inverno)
             buf_analises_inverno.seek(0)
             comprados_inverno = parse_inverno_comprados(buf_analises_inverno, lots_inverno)
+            buf_analises_inverno.seek(0)
+            pgw_inverno = parse_inverno_pgw(buf_analises_inverno, lots_inverno)
 
             cv_meta_atual_inverno = cv_meta_inverno_publicado()
             cv_meta_inverno = montar_cv_meta_inverno(lots_inverno, cv_meta_atual_inverno)
@@ -1625,6 +1698,7 @@ def main():
             inverno = {
                 "lots": lots_inverno, "colheita": colheita_inverno,
                 "comprados": comprados_inverno, "cv_meta": cv_meta_inverno,
+                "pgw": pgw_inverno,
                 "benef": benef_inverno,
             }
             log_detalhe(f"  Inverno: {len(lots_inverno)} lotes · {len(colheita_inverno)} colheita · "
