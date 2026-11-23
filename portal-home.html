@@ -134,6 +134,174 @@
   }
   #portal-usuario:not([hidden]){display:flex}
 
+
+/* LOGIN SEEDMAX — visual original */
+#portal-acesso.portal-acesso:not([hidden]){
+  position:fixed;
+  inset:0;
+  z-index:99999;
+  width:100%;
+  max-width:none;
+  height:100dvh;
+  margin:0;
+  padding:24px 16px;
+  border:0;
+  border-radius:0;
+  box-shadow:none;
+  background:
+    radial-gradient(900px 520px at 18% 8%,
+      rgba(2,132,199,.20),transparent 60%),
+    radial-gradient(700px 420px at 85% 95%,
+      rgba(56,189,248,.10),transparent 60%),
+    linear-gradient(160deg,#0a1424,#0e1d33);
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  overflow-y:auto;
+}
+
+#portal-acesso .login-marca{
+  text-align:center;
+  margin-bottom:18px;
+}
+
+#portal-acesso .login-nome{
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:clamp(38px,8vw,52px);
+  font-weight:800;
+  line-height:1;
+  letter-spacing:.06em;
+  background:linear-gradient(
+    180deg,#7dd3fc 0%,#38bdf8 55%,#0284c7 100%
+  );
+  -webkit-background-clip:text;
+  background-clip:text;
+  color:transparent;
+}
+
+#portal-acesso .login-tag{
+  margin-top:8px;
+  color:#8094ad;
+  font:10px 'IBM Plex Mono',monospace;
+  letter-spacing:.32em;
+}
+
+#portal-acesso .login-cartao{
+  width:100%;
+  max-width:360px;
+  padding:22px 22px 14px;
+  border-radius:16px;
+  background:rgba(20,34,58,.78);
+  border:1px solid #26364f;
+  box-shadow:0 24px 60px -28px rgba(0,0,0,.65);
+  backdrop-filter:blur(8px);
+}
+
+#portal-acesso .login-chip{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:4px 10px;
+  border:1px solid rgba(56,189,248,.35);
+  border-radius:999px;
+  background:rgba(56,189,248,.10);
+  color:#38bdf8;
+  font:700 11.5px 'Barlow Condensed',sans-serif;
+  letter-spacing:.14em;
+}
+
+#portal-acesso .login-subtitulo{
+  margin:10px 0 16px;
+  color:#8094ad;
+  font-size:13px;
+}
+
+#portal-acesso #portal-form{
+  display:flex;
+  flex-direction:column;
+  gap:0;
+}
+
+#portal-acesso #portal-form label{
+  margin:3px 0 6px;
+  font:600 11.5px 'Barlow Condensed',sans-serif;
+  letter-spacing:.14em;
+  color:#8094ad;
+}
+
+#portal-acesso #portal-form input{
+  width:100%;
+  margin-bottom:12px;
+  padding:10px 12px;
+  background:#0f1b2e;
+  border:1px solid #2c3d58;
+  border-radius:10px;
+  color:#e7eef8;
+  font:15px 'Barlow',sans-serif;
+  outline:none;
+}
+
+#portal-acesso #portal-form input:focus{
+  border-color:#38bdf8;
+  box-shadow:0 0 0 3px rgba(56,189,248,.15);
+}
+
+#portal-acesso .login-senha{
+  position:relative;
+}
+
+#portal-acesso .login-senha input{
+  padding-right:44px;
+}
+
+#portal-acesso #portal-ver-senha{
+  position:absolute;
+  right:6px;
+  top:5px;
+  width:34px;
+  height:32px;
+  padding:0;
+  background:transparent;
+  color:#8094ad;
+  border:0;
+  box-shadow:none;
+  cursor:pointer;
+}
+
+#portal-acesso #portal-form .login-entrar{
+  width:100%;
+  margin-top:2px;
+  padding:11px;
+  border:0;
+  border-radius:10px;
+  color:#04131f;
+  background:linear-gradient(180deg,#7dd3fc,#0284c7);
+  font:700 15px 'Barlow',sans-serif;
+  cursor:pointer;
+}
+
+#portal-acesso #portal-form .login-entrar:hover{
+  filter:brightness(1.06);
+}
+
+#portal-acesso #portal-status{
+  margin-top:12px;
+  font-size:12px;
+  line-height:1.4;
+  color:#8094ad;
+}
+
+#portal-acesso .login-rodape{
+  margin-top:12px;
+  padding-top:12px;
+  border-top:1px solid #26364f;
+  text-align:center;
+  font:9.5px 'IBM Plex Mono',monospace;
+  letter-spacing:.10em;
+  color:#5d6f88;
+}
+
 </style>
 </head>
 <body>
@@ -143,18 +311,57 @@
   <div class="tag">Plataforma · Sementes com Vigor</div>
 </header>
 
+
 <section id="portal-acesso" class="portal-acesso">
-      <h2>Acesso ao SEEDMAX</h2>
-      <p>Entre uma vez para acessar seus módulos.</p>
-      <form id="portal-form">
-        <input id="portal-email" type="email"
-          placeholder="E-mail" autocomplete="username" required>
+  <div class="login-marca">
+    <div class="login-nome">SEEDMAX</div>
+    <div class="login-tag">SEMENTES COM VIGOR</div>
+  </div>
+
+  <div class="login-cartao">
+    <span class="login-chip">
+      <svg viewBox="0 0 24 24" width="13" height="13"
+           fill="none" stroke="currentColor" stroke-width="2.2">
+        <rect x="5" y="11" width="14" height="10" rx="2"/>
+        <path d="M8 11V7a4 4 0 0 1 8 0v4"/>
+      </svg>
+      ACESSO RESTRITO
+    </span>
+
+    <div class="login-subtitulo">
+      Acesso unificado aos módulos da plataforma
+    </div>
+
+    <form id="portal-form">
+      <label for="portal-email">E-MAIL</label>
+      <input id="portal-email" type="email"
+             placeholder="seu e-mail"
+             autocomplete="username" required>
+
+      <label for="portal-senha">SENHA</label>
+      <div class="login-senha">
         <input id="portal-senha" type="password"
-          placeholder="Senha" autocomplete="current-password" required>
-        <button type="submit">Entrar no SEEDMAX</button>
-      </form>
-      <div id="portal-status" role="status">Verificando sessão...</div>
-    </section>
+               placeholder="Digite a senha..."
+               autocomplete="current-password" required>
+        <button type="button" id="portal-ver-senha"
+                aria-label="Mostrar ou ocultar senha">◉</button>
+      </div>
+
+      <button class="login-entrar" type="submit">
+        Entrar →
+      </button>
+    </form>
+
+    <div id="portal-status" role="status">
+      Verificando sessão...
+    </div>
+
+    <div class="login-rodape">
+      USO INTERNO · SEMENTES COM VIGOR
+    </div>
+  </div>
+</section>
+
     <div id="portal-usuario" hidden>
       <span id="portal-nome"></span>
       <button id="portal-sair" type="button">Sair</button>
@@ -274,6 +481,17 @@
     } finally {
       aguardando = false;
     }
+  });
+
+
+  el('portal-ver-senha').addEventListener('click', () => {
+    const campo = el('portal-senha');
+    const visivel = campo.type === 'password';
+    campo.type = visivel ? 'text' : 'password';
+    el('portal-ver-senha').setAttribute(
+      'aria-label',
+      visivel ? 'Ocultar senha' : 'Mostrar senha'
+    );
   });
 
   el('portal-sair').addEventListener('click', async () => {
