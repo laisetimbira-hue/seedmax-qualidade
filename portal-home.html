@@ -103,6 +103,37 @@
     .card{padding:22px 20px 18px}
     .ico{margin-bottom:16px}
   }
+
+  [hidden]{display:none!important}
+  .portal-acesso{
+    width:100%;max-width:400px;padding:26px;
+    background:var(--card);border:1px solid var(--line);
+    border-radius:18px;margin:10px auto 24px;
+  }
+  .portal-acesso h2{font-size:29px}
+  .portal-acesso p{margin:8px 0 16px}
+  #portal-form{display:grid;gap:12px}
+  #portal-form input{
+    width:100%;padding:13px;border-radius:9px;
+    background:#0e1d33;border:1px solid #34445e;
+    color:#e7eef8;font:inherit;
+  }
+  #portal-form button,#portal-sair{
+    padding:12px 18px;border:0;border-radius:9px;
+    background:#38bdf8;color:#04131f;
+    font:600 14px Barlow,sans-serif;cursor:pointer;
+  }
+  #portal-status{
+    margin-top:12px;font-size:13px;color:#a6b8cd;
+    line-height:1.5;
+  }
+  #portal-usuario{
+    width:100%;max-width:980px;margin-bottom:16px;
+    color:#a6b8cd;font-size:13px;
+    align-items:center;justify-content:flex-end;gap:14px;
+  }
+  #portal-usuario:not([hidden]){display:flex}
+
 </style>
 </head>
 <body>
@@ -112,7 +143,23 @@
   <div class="tag">Plataforma · Sementes com Vigor</div>
 </header>
 
-<main class="grid">
+<section id="portal-acesso" class="portal-acesso">
+      <h2>Acesso ao SEEDMAX</h2>
+      <p>Entre uma vez para acessar seus módulos.</p>
+      <form id="portal-form">
+        <input id="portal-email" type="email"
+          placeholder="E-mail" autocomplete="username" required>
+        <input id="portal-senha" type="password"
+          placeholder="Senha" autocomplete="current-password" required>
+        <button type="submit">Entrar no SEEDMAX</button>
+      </form>
+      <div id="portal-status" role="status">Verificando sessão...</div>
+    </section>
+    <div id="portal-usuario" hidden>
+      <span id="portal-nome"></span>
+      <button id="portal-sair" type="button">Sair</button>
+    </div>
+    <main class="grid" id="portal-modulos" hidden>
   <a class="card q" href="/qualidade/">
     <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6"/><path d="M10 3v6.5L4.6 18.4A1.7 1.7 0 0 0 6 21h12a1.7 1.7 0 0 0 1.4-2.6L14 9.5V3"/><path d="M7.5 15h9"/></svg></div>
     <div class="k">Qualidade</div>
@@ -121,7 +168,7 @@
     <div class="go"><span class="lock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Acesso restrito</span><b>Abrir →</b></div>
   </a>
 
-  <a class="card t" href="https://tsi.seedmax.com.br/">
+  <a class="card t" href="/tsi/">
     <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/></svg></div>
     <div class="k">TSI</div>
     <h2>Estoque TSI</h2>
@@ -129,7 +176,7 @@
     <div class="go"><span class="lock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Login da equipe</span><b>Abrir →</b></div>
   </a>
 
-  <a class="card r" href="https://rastrel.seedmax.com.br/">
+  <a class="card r" href="/rastrel/">
     <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5a7 7 0 0 1 14 0"/><path d="M8 12.5a4 4 0 0 1 8 0"/><circle cx="12" cy="12.5" r="1.2"/><path d="M4 21h16"/><path d="M12 14v7"/></svg></div>
     <div class="k">Rastreabilidade</div>
     <h2>RASTREL</h2>
@@ -139,6 +186,113 @@
 </main>
 
 <footer>USO INTERNO · SEMENTES COM VIGOR</footer>
+
+
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="/ponte/config.js"></script>
+<script src="/ponte/ponte-sair.js"></script>
+<script>
+(function(){
+  const CONFIG = {"apiKey": "AIzaSyAVW7rA87T3S_AdrP83gCGIFl6jgcWehCE", "authDomain": "seedmax-4c755.firebaseapp.com", "projectId": "seedmax-4c755", "storageBucket": "seedmax-4c755.firebasestorage.app", "messagingSenderId": "261583026851", "appId": "1:261583026851:web:2eb24d93f582ae562ddd16"};
+  firebase.initializeApp(CONFIG);
+  const auth = firebase.auth();
+  const db = firebase.firestore();
+  const el = id => document.getElementById(id);
+  const permissoes = {
+    ADMIN: ['q','t','r'],
+    QUALIDADE: ['q'],
+    VISUALIZACAO: ['q'],
+    TSI: ['t'],
+    RASTREL: ['r']
+  };
+  let aguardando = false;
+
+  const status = msg => el('portal-status').textContent = msg;
+
+  function mostrarLogin(msg) {
+    el('portal-acesso').hidden = false;
+    el('portal-modulos').hidden = true;
+    el('portal-usuario').hidden = true;
+    el('portal-form').hidden = false;
+    if (msg) status(msg);
+  }
+
+  async function verificar(user) {
+    if (!user) {
+      mostrarLogin('Informe seu e-mail e senha.');
+      return;
+    }
+    status('Verificando permissões...');
+    try {
+      const snap = await db.collection('users').doc(user.uid).get();
+      const perfil = snap.exists ? snap.data() : null;
+      const role = perfil && perfil.role;
+      if (!perfil || perfil.active !== true || !permissoes[role]) {
+        await auth.signOut();
+        mostrarLogin('Usuário sem acesso ativo ao SEEDMAX.');
+        return;
+      }
+      ['q','t','r'].forEach(tipo => {
+        const card = document.querySelector('.card.' + tipo);
+        if (card) card.hidden = !permissoes[role].includes(tipo);
+      });
+      el('portal-nome').textContent = perfil.name || user.email;
+      el('portal-acesso').hidden = true;
+      el('portal-modulos').hidden = false;
+      el('portal-usuario').hidden = false;
+    } catch (e) {
+      mostrarLogin(
+        'Não foi possível verificar suas permissões. ' +
+        'Confira a conexão e atualize a página.'
+      );
+    }
+  }
+
+  auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL)
+    .then(() => {
+      auth.onAuthStateChanged(user => {
+        if (!aguardando) verificar(user);
+      });
+    })
+    .catch(() => mostrarLogin('Erro ao preparar a sessão.'));
+
+  el('portal-form').addEventListener('submit', async ev => {
+    ev.preventDefault();
+    aguardando = true;
+    status('Entrando...');
+    try {
+      const email = el('portal-email').value.trim().toLowerCase();
+      const senha = el('portal-senha').value;
+      const resultado = await auth.signInWithEmailAndPassword(email, senha);
+      el('portal-senha').value = '';
+      await verificar(resultado.user);
+    } catch (e) {
+      el('portal-senha').value = '';
+      mostrarLogin('Não foi possível entrar. Confira e-mail e senha.');
+    } finally {
+      aguardando = false;
+    }
+  });
+
+  el('portal-sair').addEventListener('click', async () => {
+    el('portal-modulos').hidden = true;
+    el('portal-usuario').hidden = true;
+    try {
+      if (window.SeedmaxPonte &&
+          typeof window.SeedmaxPonte.sairDeTudo === 'function') {
+        await window.SeedmaxPonte.sairDeTudo(auth);
+      } else {
+        await auth.signOut();
+      }
+    } catch (e) {
+      await auth.signOut();
+    }
+    mostrarLogin('Sessão encerrada.');
+  });
+})();
+</script>
 
 </body>
 </html>
