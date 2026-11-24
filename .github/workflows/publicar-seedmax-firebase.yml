@@ -58,6 +58,7 @@ jobs:
             test -s ".hosting-public/$arquivo" || { echo "ERRO: $arquivo vazio"; exit 1; }
             echo "Preservado: $arquivo"
           done
+          mkdir -p .hosting-public/rastrel
           cp rastrel/index.html .hosting-public/rastrel/index.html
           [ "$(find .hosting-public -type f | wc -l)" -eq 14 ] || exit 1
           cmp -s index.html .hosting-public/qualidade/index.html
