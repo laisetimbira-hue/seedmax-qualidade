@@ -5999,6 +5999,8 @@ function renderMap(){
   if(soPlanilha())renderForaDoBloco(map);
 }
 function renderAvisosPlanilha(map){
+  return; // Ocultar avisos antigos de importação do Excel.
+
   const F=STATE.fisico,ex=STATE.extras||{};
   if(STATE.fisicoErro){map.appendChild(el('div','setup','Não consegui ler o mapa físico: '+esc(STATE.fisicoErro)));return;}
   if(!F){map.appendChild(el('div','setup',STATE.cloud?'Carregando o mapa físico…':'Nuvem não conectada.'));return;}
@@ -6539,6 +6541,8 @@ function start(){
 }
 start();
 </script>
+
+
 </body>
 </html>" style="width:100%;height:calc(100dvh - 92px);min-height:560px;border:0;display:block"></iframe>
 </main>
