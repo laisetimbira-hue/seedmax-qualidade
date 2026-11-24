@@ -1014,6 +1014,36 @@
   font-weight: 700 !important;
 }
 
+
+/* ACABAMENTO DOS ICONES — REFERENCIA APROVADA */
+#portal-acesso .mini-icone {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: 10px;
+  color: var(--cor);
+  background: color-mix(in srgb, var(--cor) 13%, #102640);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+}
+
+#portal-acesso .mini-icone svg {
+  width: 23px;
+  height: 23px;
+  display: block;
+  stroke-width: 1.9;
+  vector-effect: non-scaling-stroke;
+}
+
+#portal-acesso .original-mini.qualidade {
+  --cor: #24c8f5;
+}
+#portal-acesso .original-mini.tsi {
+  --cor: #44df70;
+}
+#portal-acesso .original-mini.rastrel {
+  --cor: #f8c129;
+}
+
 </style>
 </head>
 <body>
@@ -1044,13 +1074,27 @@
 
     <div class="original-mini-modulos">
       <div class="original-mini qualidade">
-        <span class="mini-icone" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v6l-5.5 9a2 2 0 0 0 1.7 3h11.6a2 2 0 0 0 1.7-3L14 9V3M7.5 15h9"/></svg></span><span class="mini-texto"><strong>Qualidade</strong><small>Análises, lotes e aprovação</small></span>
+        <span class="mini-icone" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M8.5 2h7"/>
+      <path d="M10 2v7l-7.5 11a1.2 1.2 0 0 0 1 2h17a1.2 1.2 0 0 0 1-2L14 9V2"/>
+      <path d="M7.5 16h9"/>
+    </svg></span><span class="mini-texto"><strong>Qualidade</strong><small>Análises, lotes e aprovação</small></span>
       </div>
       <div class="original-mini tsi">
-        <span class="mini-icone" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 9 5v10l-9 5-9-5V7l9-5ZM3 7l9 5 9-5M12 12v10"/></svg></span><span class="mini-texto"><strong>TSI</strong><small>Tratamento industrial</small></span>
+        <span class="mini-icone" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m12 2 9 5-9 5-9-5 9-5Z"/>
+      <path d="M3 7v10l9 5 9-5V7"/>
+      <path d="M12 12v10"/>
+    </svg></span><span class="mini-texto"><strong>TSI</strong><small>Tratamento industrial</small></span>
       </div>
       <div class="original-mini rastrel">
-        <span class="mini-icone" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12a7 7 0 0 1 14 0M8 12a4 4 0 0 1 8 0M12 15v6M5 21h14"/><circle cx="12" cy="12" r="1"/></svg></span><span class="mini-texto"><strong>RASTREL</strong><small>Rastreabilidade NFC</small></span>
+        <span class="mini-icone" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 10a11 11 0 0 1 16 0"/>
+      <path d="M7 13a7 7 0 0 1 10 0"/>
+      <circle cx="12" cy="15" r="1"/>
+      <path d="M12 16v5"/>
+      <path d="M6 21h12"/>
+    </svg></span><span class="mini-texto"><strong>RASTREL</strong><small>Rastreabilidade NFC</small></span>
       </div>
     </div>
 
