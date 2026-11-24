@@ -5,6 +5,8 @@ on:
     paths:
       - index.html
       - portal-home.html
+      - icon.png
+      - manifest.webmanifest
       - .github/workflows/publicar-seedmax-firebase.yml
   workflow_dispatch:
     inputs:
@@ -34,6 +36,10 @@ jobs:
           mkdir -p .hosting-public/qualidade
           cp index.html .hosting-public/qualidade/index.html
           cp portal-home.html .hosting-public/index.html
+          cp icon.png .hosting-public/icon.png
+          cp manifest.webmanifest .hosting-public/manifest.webmanifest
+          test -s .hosting-public/icon.png
+          test -s .hosting-public/manifest.webmanifest
           grep -q 'id="portal-form"' .hosting-public/index.html
           grep -q 'href="/tsi/"' .hosting-public/index.html
           grep -q 'href="/rastrel/"' .hosting-public/index.html
@@ -60,10 +66,10 @@ jobs:
           done
           mkdir -p .hosting-public/rastrel
           cp rastrel/index.html .hosting-public/rastrel/index.html
-          [ "$(find .hosting-public -type f | wc -l)" -eq 14 ] || exit 1
+          [ "$(find .hosting-public -type f | wc -l)" -eq 16 ] || exit 1
           cmp -s index.html .hosting-public/qualidade/index.html
           grep -q 'Inverno no padrão visual da Soja' .hosting-public/qualidade/index.html
-          echo 'Pacote verificado: 14 arquivos; Portal e Qualidade separados'
+          echo 'Pacote verificado: 16 arquivos; Portal e Qualidade separados'
           cat > .firebase-hosting-ci.json <<'EOF'
           {
             "hosting": {
