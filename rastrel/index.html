@@ -6212,7 +6212,20 @@ function pilhaCard(p,i){
   if(p.tagExcel)c.insertAdjacentHTML('beforeend','<div class=&quot;pobs&quot; style=&quot;background:#eef3fc;border-color:#c9d8f2;color:#2c4f8a&quot;>🏷 <b>Com TAG · posição do Excel</b><br>'+esc(p.tagInfo||'').replace(/\n/g,'<br>')+'</div>');
   if(p.avisos&amp;&amp;p.avisos.length)c.insertAdjacentHTML('beforeend','<div class=&quot;pobs&quot;>⚠ '+p.avisos.map(esc).join('<br>⚠ ')+'</div>');
   if(p.celula)c.insertAdjacentHTML('beforeend','<div class=&quot;raw&quot;>Excel: '+esc(p.celula)+(p.qtd_status==='ambigua'?' · quantidade ambígua':'')+'</div>');
-  if(soPlanilha()||STATE.preview)return c;           /* camada Excel (e prévia): nenhum botão de edição/movimentação */
+  if(STATE.preview)return c;
+  if(soPlanilha()){
+    const acts=el('div','acts');
+    const obs=el('button',null,'Obs');obs.onclick=()=>editarObs(p);acts.appendChild(obs);
+    if(!p.live){
+      const saida=el('button',null,'Saída');
+      saida.onclick=()=>openMovForm({wh:STATE.wh,block:CURRENT,p});
+      const mover=el('button',null,'Mover');
+      mover.onclick=()=>moverLoteFisico({wh:STATE.wh,block:CURRENT,p});
+      acts.append(mover,saida);
+    }
+    c.appendChild(acts);
+    return c;
+  }
   const acts=el('div','acts');
   const ob=el('button',null,'Obs');ob.onclick=()=>editarObs(p);
   const sd=el('button',null,'Saída');sd.onclick=()=>openMovForm({wh:STATE.wh,block:CURRENT,p});
@@ -6265,6 +6278,105 @@ function movePilha(idx){
 }
 
 /* ---- movimentações ---- */
+/* RASTREL_MOVIMENTACAO_FISICA_V1
+   Saída e mudança de posição do mapa físico em transações do Firestore.
+   Não escreve nas coleções bags, epcs ou movimentacoes NFC. */
+function localizarPilhaFisica(atual,sel){
+  const blocos=(atual.armazens||{})[sel.wh]||[];
+  const bloco=blocos.find(b=>b.id===sel.block.id);
+  if(!bloco||!Array.isArray(bloco.pilhas))throw new Error('Bloco de origem não encontrado.');
+  const norm=x=>String(x||'').trim().toUpperCase();
+  const candidatos=bloco.pilhas.map((p,i)=>({p,i})).filter(x=>{
+    const lotes=x.p.lotes||[x.p.lote];
+    return lotes.some(l=>norm(l)===norm(sel.p.lote));
+  });
+  if(!candidatos.length)throw new Error('Lote não encontrado no bloco. Atualize o mapa.');
+  // Se um lote consta em mais de uma pilha no mesmo bloco, não arriscar escolher errado.
+  const matches=candidatos.length===1?candidatos:candidatos.filter(x=>
+    x.p.raw===sel.p.raw && x.p.celula===sel.p.celula);
+  if(matches.length!==1)throw new Error('Lote em múltiplas pilhas; é necessário identificar a pilha antes de movimentar.');
+  const item=matches[0];
+  if((item.p.lotes||[item.p.lote]).filter(Boolean).length!==1)
+    throw new Error('Esta pilha contém mais de um lote. Separe os registros antes de movimentar.');
+  if(item.p.live)throw new Error('Bags NFC devem ser movimentados pelo controle de tags.');
+  return {bloco,pilha:item.p,index:item.i};
+}
+function verificarMovimentoFisico(sel){
+  if(STATE.preview)throw new Error('Prévia: nenhuma alteração permitida.');
+  if(!STATE.cloud||!STATE.db||!STATE.fisico)throw new Error('Mapa não conectado ao Firebase.');
+  if(sel.p.live)throw new Error('Este lote possui tags NFC: utilize a movimentação por tags.');
+  const id=normLote(sel.p.lote);
+  const rast=indiceRastrel()[id];
+  if(rast && rast.est>0)throw new Error('O lote tem bags NFC em estoque; utilize o fluxo de tags para evitar divergências.');
+}
+function criarEventoFisico(sel,q,destino,obs){
+  return {id:Date.now()+'-'+Math.floor(Math.random()*1000000),ts:Date.now(),
+    armazem:sel.wh,bloco:sel.block.id,fila:(sel.p.file||0)+1,
+    cultivar:sel.p.cultivar||'',lote:sel.p.lote,especie:sel.p.especie||'',
+    qtd:q,unidade:'BB',destino,obs:obs||'',live:false,
+    origem:'RASTREL mapa físico',operador:(localStorage.getItem('operador')||'Operador RASTREL')};
+}
+async function transacaoMapaFisico(modificar,evento){
+  const fisicoRef=STATE.db.collection('mapa').doc('fisico');
+  const estadoRef=STATE.db.collection('mapa').doc('estado');
+  await STATE.db.runTransaction(async tx=>{
+    const f=await tx.get(fisicoRef);
+    const e=await tx.get(estadoRef);
+    if(!f.exists)throw new Error('Mapa físico não encontrado.');
+    const atual=f.data();
+    modificar(atual);
+    const antigo=e.exists&&Array.isArray(e.data().movs)?e.data().movs:[];
+    tx.update(fisicoRef,{armazens:atual.armazens,atualizado_em_rastrel:new Date().toISOString()});
+    tx.set(estadoRef,{movs:[evento,...antigo],updatedAt:Date.now()},{merge:true});
+  });
+}
+async function registrarMovFisico(sel,q,destino,obs){
+  verificarMovimentoFisico(sel);
+  if(!Number.isFinite(q)||q<=0)throw new Error('Quantidade inválida.');
+  const evento=criarEventoFisico(sel,q,destino,obs);
+  await transacaoMapaFisico(atual=>{
+    const {bloco,pilha,index}=localizarPilhaFisica(atual,sel);
+    const saldo=numFromQtd(pilha.qtd);
+    if(saldo<=0||q>saldo+0.0001)throw new Error('Quantidade supera o saldo atual ('+fmtNum(saldo)+' BB).');
+    if(Math.abs(q-saldo)<0.0001)bloco.pilhas.splice(index,1);
+    else{
+      pilha.qtd=fmtNum(saldo-q)+'BB';
+      pilha.raw=[pilha.cultivar,pilha.categoria,pilha.peneira,pilha.lote,pilha.qtd,pilha.tratamento].filter(Boolean).join(' ');
+    }
+  },evento);
+}
+async function moverLoteFisico(sel){
+  try{verificarMovimentoFisico(sel);}
+  catch(e){alert(e.message||String(e));return;}
+  const destinos=[];
+  ORDEM.forEach(wh=>(STATE.fisico?.armazens?.[wh]||[]).forEach(bl=>{
+    if(wh!==sel.wh||bl.id!==sel.block.id)destinos.push({wh,id:bl.id});
+  }));
+  if(!destinos.length){alert('Não há blocos de destino disponíveis.');return;}
+  const opcao=prompt('Mover '+sel.p.lote+' para qual bloco?\n'+destinos.map((d,i)=>i+': '+d.wh+' / '+d.id).join('\n')+'\n\nDigite o número do destino:');
+  if(opcao===null)return;
+  if(!/^\d+$/.test(opcao.trim())||!destinos[Number(opcao)]){alert('Destino inválido.');return;}
+  const destino=destinos[Number(opcao)];
+  const qtd=numFromQtd(sel.p.qtd);
+  if(!confirm('Mover '+sel.p.lote+' ('+fmtNum(qtd)+' BB) de '+sel.wh+' / '+sel.block.id+' para '+destino.wh+' / '+destino.id+'?'))return;
+  const evento=criarEventoFisico(sel,qtd,'Movimentação interna',destino.wh+' / '+destino.id);
+  evento.destino_armazem=destino.wh;evento.destino_bloco=destino.id;
+  try{
+    await transacaoMapaFisico(atual=>{
+      const {bloco,pilha,index}=localizarPilhaFisica(atual,sel);
+      const alvo=(atual.armazens?.[destino.wh]||[]).find(b=>b.id===destino.id);
+      if(!alvo||!Array.isArray(alvo.pilhas))throw new Error('Bloco de destino não encontrado.');
+      const lote=normLote(pilha.lote);
+      if(alvo.pilhas.some(p=>(p.lotes||[p.lote]).some(l=>normLote(l)===lote)))
+        throw new Error('Esse lote já existe no bloco de destino.');
+      bloco.pilhas.splice(index,1);
+      alvo.pilhas.push({...pilha,file:0,movido_em_rastrel:new Date().toISOString()});
+      evento.qtd=numFromQtd(pilha.qtd);
+    },evento);
+    closeDrawer();toast('Lote movido com sucesso ✓');
+  }catch(e){console.error(e);alert('Não foi possível mover o lote: '+(e.message||e));}
+}
+
 function registrarMov(sel,qtdMov,destino,obs){
   const rem=numFromQtd(sel.p.qtd), un=unidade(sel.p.qtd);
   const q=Math.min(qtdMov,rem);
@@ -6286,8 +6398,8 @@ function setView(v){
 }
 function renderMov(){
   const s=$('#movscreen');s.innerHTML='';
-  if(!soPlanilha()&amp;&amp;!STATE.preview){const btn=el('button','btn','+ Registrar movimentação');btn.style.cssText='width:100%;padding:13px;font-size:15px';btn.onclick=()=>openMovForm(null);
-  s.appendChild(btn);}else s.appendChild(el('div','hint','Fonte Planilha: histórico só para consulta. Para registrar saída, use a fonte Tag.'));
+  if(!STATE.preview){const btn=el('button','btn','+ Registrar movimentação');btn.style.cssText='width:100%;padding:13px;font-size:15px';btn.onclick=()=>openMovForm(null);
+  s.appendChild(btn);}else s.appendChild(el('div','hint','Prévia: movimentações indisponíveis.'));
   const tot={};STATE.movs.forEach(m=>{const k=m.destino+'|'+m.unidade;tot[k]=(tot[k]||0)+m.qtd;});
   const tl=el('div','mov-tot');
   DESTINOS.forEach(d=>['BB','SC'].forEach(u=>{const v=tot[d+'|'+u];if(v)tl.appendChild(el('div','tchip','<b>'+fmtNum(v)+u+'</b>'+d));}));
@@ -6332,11 +6444,21 @@ function openMovForm(preBag){
       body.append(back,card);
       let dest=null;const dp=card.querySelector('#mDest');
       DESTINOS.forEach(d=>{const bt=el('button','destbtn',d);bt.onclick=()=>{dest=d;[...dp.children].forEach(c=>c.classList.remove('on'));bt.classList.add('on');};dp.appendChild(bt);});
-      card.querySelector('#mSave').onclick=()=>{
+      card.querySelector('#mSave').onclick=async()=>{
         const q=parseFloat(String(card.querySelector('#mQtd').value||'0').replace(',','.'))||0;
         if(q<=0){toast('Informe a quantidade');return;}
         if(!dest){toast('Escolha o destino');return;}
-        registrarMov(sel,q,dest,card.querySelector('#mObs').value.trim());
+        const obs=card.querySelector('#mObs').value.trim();
+        const btn=card.querySelector('#mSave');
+        if(soPlanilha()){
+          if(sel.p.live){alert('Este lote possui bags NFC. Registre a movimentação pelo fluxo de tags do RASTREL para manter a rastreabilidade.');return;}
+          btn.disabled=true;btn.textContent='Salvando…';
+          try { await registrarMovFisico(sel,q,dest,obs); }
+          catch(e){console.error(e);alert('Não foi possível registrar a movimentação: '+(e.message||e));return;}
+          finally {btn.disabled=false;btn.textContent='Registrar saída';}
+        }else{
+          registrarMov(sel,q,dest,obs);
+        }
         closeDrawer();renderMap();if(STATE.view==='mov')renderMov();toast('Movimentação registrada ✓');
       };
     }
