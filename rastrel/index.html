@@ -6070,7 +6070,12 @@ function blockCard(b,ladoIdx){
       if(nota){s.title=nota;const nt=el('span','note','✎');nt.onclick=ev=>{ev.stopPropagation();showTip(nt,nota);};s.appendChild(nt);}
       fileEl.appendChild(s);
     });
-    if(!whLive(STATE.wh)){
+    if(soPlanilha() && !STATE.preview){
+      const add=el('button','slot add'+(active?' dim':''),'+');
+      add.title='Adicionar lote neste bloco';
+      add.onclick=()=>{openBlock(b);adicionarLoteFisico(b.id,STATE.wh);};
+      fileEl.appendChild(add);
+    } else if(!whLive(STATE.wh)){
       const add=el('button','slot add'+(active?' dim':''),'+');
       add.onclick=()=>{openBlock(b);showForm(null,f);};
       fileEl.appendChild(add);
@@ -6094,12 +6099,93 @@ function closeDrawer(){$('#scrim').classList.remove('show');$('#drawer').classLi
 function renderDrawer(){
   const body=$('#dBody');body.innerHTML='';
   const live=whLive(STATE.wh);
-  if(soPlanilha()){body.appendChild(el('div','hint','Mapa físico (Excel) — somente visualização. Para editar, use a planilha e reimporte.'));}
+  if(soPlanilha()){
+    if(!STATE.preview){
+      const add=el('div','addbar');
+      const btn=el('button','btn','+ Adicionar lote');
+      btn.onclick=()=>adicionarLoteFisico(CURRENT.id,STATE.wh);
+      add.appendChild(btn); body.appendChild(add);
+    }
+    body.appendChild(el('div','hint','Lotes do mapa físico — alterações salvas no RASTREL.'));
+  }
   else if(live){body.appendChild(el('div','hint','Bags do RASTREL — leitura. Você pode registrar observação e saída.'));}
   else{const add=el('div','addbar');const ab=el('button','btn','+ Adicionar pilha');ab.onclick=()=>showForm(null,0);add.appendChild(ab);body.appendChild(add);}
   if(!CURRENT.pilhas.length){body.appendChild(el('div','empty-state','Bloco vazio.'));return;}
   CURRENT.pilhas.forEach((p,i)=>body.appendChild(pilhaCard(p,i)));
 }
+
+/* Cadastro manual no RASTREL: salva SOMENTE em mapa/fisico.
+   Nunca grava nem altera documentos da coleção bags / tags NFC. */
+async function adicionarLoteFisico(posicao, armazem){
+  if(STATE.preview){toast('Prévia: cadastro desativado');return;}
+  if(!STATE.cloud || !STATE.db || !STATE.fisico){toast('Mapa não conectado ao Firebase');return;}
+  const corpo=$('#dBody');
+  if(!corpo)return;
+  const form=el('div','form');
+  const campos=[
+    ['cultivar','Cultivar','Ex.: TITANIUM'],
+    ['lote','Lote','Ex.: 26S435G'],
+    ['categoria','Categoria','Ex.: S1'],
+    ['peneira','Peneira','Ex.: P2'],
+    ['qtd','Quantidade de BB','Ex.: 9'],
+    ['tratamento','Tratamento (opcional)','Ex.: TSI']
+  ];
+  const titulo=el('div','hint','Adicionar lote em '+armazem+' · bloco '+posicao);
+  form.appendChild(titulo);
+  for(const [chave,rotulo,dica] of campos){
+    const label=el('label',null,rotulo);
+    const input=document.createElement('input');
+    input.type='text'; input.placeholder=dica;input.id='novo_lote_'+chave;
+    form.appendChild(label);form.appendChild(input);
+  }
+  const salvar=el('button','save','Salvar lote no RASTREL');
+  salvar.type='button';
+  form.appendChild(salvar);
+  corpo.innerHTML='';
+  const voltar=el('button','btn ghost','‹ voltar');
+  voltar.onclick=()=>renderDrawer();
+  corpo.appendChild(voltar);corpo.appendChild(form);
+  salvar.onclick=async()=>{
+    const v=chave=>(form.querySelector('#novo_lote_'+chave)?.value||'').trim();
+    const lote=v('lote').toUpperCase(), cultivar=v('cultivar').toUpperCase();
+    const numero=v('qtd').replace(',','.');
+    const quantidade=Number(numero);
+    if(!lote||!cultivar||!Number.isFinite(quantidade)||quantidade<=0||!/^\d+(\.\d+)?$/.test(numero)){
+      toast('Informe cultivar, lote e quantidade válida de BB');return;
+    }
+    const qtd=(Number.isInteger(quantidade)?String(quantidade):String(quantidade).replace('.',','))+'BB';
+    const np={
+      lote, lotes:[lote], cultivar, categoria:v('categoria'),
+      peneira:v('peneira'), qtd, tratamento:v('tratamento'),
+      tsi:!!v('tratamento'),status:'estoque',file:0,
+      raw:[cultivar,v('categoria'),v('peneira'),lote,qtd,v('tratamento')].filter(Boolean).join(' '),
+      cadastrado_no_rastrel:true, cadastrado_em:new Date().toISOString()
+    };
+    salvar.disabled=true;salvar.textContent='Salvando…';
+    try {
+      const ref=STATE.db.collection('mapa').doc('fisico');
+      await STATE.db.runTransaction(async tx=>{
+        const snap=await tx.get(ref);
+        if(!snap.exists)throw new Error('Mapa físico não encontrado');
+        const atual=snap.data();
+        const bloco=(atual.armazens?.[armazem]||[]).find(b=>b.id===posicao);
+        if(!bloco)throw new Error('Bloco não encontrado no mapa');
+        if(!Array.isArray(bloco.pilhas))throw new Error('Estrutura do bloco inválida');
+        if(bloco.pilhas.some(p=>(p.lotes||[p.lote]).some(l=>String(l).toUpperCase()===lote)))
+          throw new Error('Este lote já está neste bloco');
+        bloco.pilhas.push(np);
+        tx.update(ref,{armazens:atual.armazens,atualizado_em_rastrel:new Date().toISOString()});
+      });
+      toast('Lote salvo no mapa ✓');
+      closeDrawer();
+    } catch(e){
+      console.error('Cadastro de lote no mapa',e);
+      const motivo=e.code==='permission-denied'?'Sem permissão para salvar mapa/fisico':(e.message||String(e));
+      alert('Não foi possível salvar o lote: '+motivo+'\nNada foi alterado.');
+    } finally {salvar.disabled=false;salvar.textContent='Salvar lote no RASTREL';}
+  };
+}
+
 function editarObs(p){
   const key=notaKey(STATE.wh,CURRENT,p);
   const atual=STATE.notas[key]||'';
