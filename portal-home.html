@@ -1226,7 +1226,9 @@
         const card = document.querySelector('.card.' + tipo);
         if (card) card.hidden = !permissoes[role].includes(tipo);
       });
-      el('portal-nome').textContent = perfil.name || user.email;
+      const nome = (perfil.name || user.displayName || user.email || 'usuário').trim();
+      const primeiroNome = nome.includes('@') ? nome : nome.split(/\s+/)[0];
+      el('portal-nome').textContent = 'Olá, ' + primeiroNome + '! 👋';
       el('portal-acesso').hidden = true;
       el('portal-modulos').hidden = false;
       el('portal-usuario').hidden = false;
