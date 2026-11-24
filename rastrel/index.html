@@ -6539,6 +6539,57 @@ function start(){
 }
 start();
 </script>
+
+<script>
+/* RASTREL_OCULTAR_AVISO_EXCEL */
+(function(){
+  const frases = [
+    'MAPEAMENTO!!.xlsx',
+    'Lote com TAG e posição no RASTREL',
+    'não estão no Excel',
+    'Neste armazém:',
+    'ver lotes'
+  ];
+
+  function normalizar(t){
+    return String(t || '').replace(/\s+/g,' ').trim();
+  }
+
+  function acharBloco(){
+    const elementos = [...document.querySelectorAll('div, section, article, aside')];
+    for(const el of elementos){
+      const txt = normalizar(el.innerText || el.textContent);
+      const bate = frases.filter(f => txt.includes(f));
+      if(bate.length >= 3){
+        return el;
+      }
+    }
+    return null;
+  }
+
+  function ocultar(){
+    const bloco = acharBloco();
+    if(bloco){
+      bloco.style.display = 'none';
+      bloco.setAttribute('data-ocultado-excel-rastrel', '1');
+    }
+  }
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', ocultar);
+  } else {
+    ocultar();
+  }
+
+  setTimeout(ocultar, 500);
+  setTimeout(ocultar, 1500);
+  setTimeout(ocultar, 3000);
+
+  const obs = new MutationObserver(() => ocultar());
+  obs.observe(document.documentElement, { childList:true, subtree:true });
+})();
+</script>
+
 </body>
 </html>" style="width:100%;height:calc(100dvh - 92px);min-height:560px;border:0;display:block"></iframe>
 </main>
