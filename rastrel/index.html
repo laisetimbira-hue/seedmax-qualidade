@@ -6116,6 +6116,17 @@ function renderDrawer(){
 
 /* Cadastro manual no RASTREL: salva SOMENTE em mapa/fisico.
    Nunca grava nem altera documentos da coleção bags / tags NFC. */
+function dadosFirestore(obj){
+  let conversor = JSON;
+  try {
+    if(window.parent !== window &amp;&amp;
+       window.parent.rastrelDb === STATE.db){
+      conversor = window.parent.JSON;
+    }
+  } catch(e) {}
+  return conversor.parse(JSON.stringify(obj));
+}
+
 async function adicionarLoteFisico(posicao, armazem){
   if(STATE.preview){toast('Prévia: cadastro desativado');return;}
   if(!STATE.cloud || !STATE.db || !STATE.fisico){toast('Mapa não conectado ao Firebase');return;}
@@ -6174,7 +6185,7 @@ async function adicionarLoteFisico(posicao, armazem){
         if(bloco.pilhas.some(p=>(p.lotes||[p.lote]).some(l=>String(l).toUpperCase()===lote)))
           throw new Error('Este lote já está neste bloco');
         bloco.pilhas.push(np);
-        tx.update(ref,{armazens:atual.armazens,atualizado_em_rastrel:new Date().toISOString()});
+        tx.update(ref,dadosFirestore({armazens:atual.armazens,atualizado_em_rastrel:new Date().toISOString()}));
       });
       toast('Lote salvo no mapa ✓');
       closeDrawer();
@@ -6326,8 +6337,8 @@ async function transacaoMapaFisico(modificar,evento){
     const atual=f.data();
     modificar(atual);
     const antigo=e.exists&&Array.isArray(e.data().movs)?e.data().movs:[];
-    tx.update(fisicoRef,{armazens:atual.armazens,atualizado_em_rastrel:new Date().toISOString()});
-    tx.set(estadoRef,{movs:[evento,...antigo],updatedAt:Date.now()},{merge:true});
+    tx.update(fisicoRef,dadosFirestore({armazens:atual.armazens,atualizado_em_rastrel:new Date().toISOString()}));
+    tx.set(estadoRef,dadosFirestore({movs:[evento,...antigo],updatedAt:Date.now()}),{merge:true});
   });
 }
 async function registrarMovFisico(sel,q,destino,obs){
