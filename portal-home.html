@@ -1101,9 +1101,38 @@
   }
 }
 
+
+#portal-carregando {
+  position:fixed;
+  inset:0;
+  z-index:100001;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-direction:column;
+  gap:12px;
+  background:#0a1424;
+  color:#38bdf8;
+  font-family:Barlow,Arial,sans-serif;
+}
+#portal-carregando[hidden] {
+  display:none!important;
+}
+#portal-carregando strong {
+  font-size:25px;
+  letter-spacing:5px;
+}
+#portal-carregando span {
+  color:#94a3b8;
+  font-size:13px;
+}
 </style>
 </head>
 <body>
+<div id="portal-carregando" role="status">
+  <strong>SEEDMAX</strong>
+  <span>Verificando sessão...</span>
+</div>
 
 <header class="brand">
   <div class="logo"><span>SEED</span><span>MAX</span></div>
@@ -1112,7 +1141,7 @@
 
 
 
-<section id="portal-acesso" class="portal-acesso">
+<section id="portal-acesso" class="portal-acesso" hidden>
 
   <div class="original-esquerda">
     <div class="original-sobre">
@@ -1257,6 +1286,7 @@
   const status = msg => el('portal-status').textContent = msg;
 
   function mostrarLogin(msg) {
+    el('portal-carregando').hidden = true;
     el('portal-acesso').hidden = false;
     el('portal-modulos').hidden = true;
     el('portal-usuario').hidden = true;
@@ -1289,6 +1319,7 @@
       el('portal-acesso').hidden = true;
       el('portal-modulos').hidden = false;
       el('portal-usuario').hidden = false;
+      el('portal-carregando').hidden = true;
     } catch (e) {
       mostrarLogin(
         'Não foi possível verificar suas permissões. ' +
