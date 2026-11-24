@@ -6330,7 +6330,7 @@ async function transacaoMapaFisico(modificar,evento){
     tx.set(estadoRef,{movs:[evento,...antigo],updatedAt:Date.now()},{merge:true});
   });
 }
-async async function registrarMovFisico(sel,q,destino,obs){
+async function registrarMovFisico(sel,q,destino,obs){
   verificarMovimentoFisico(sel);
   if(!Number.isFinite(q)||q<=0)throw new Error('Quantidade inválida.');
   const evento=criarEventoFisico(sel,q,destino,obs);
@@ -6345,7 +6345,7 @@ async async function registrarMovFisico(sel,q,destino,obs){
     }
   },evento);
 }
-async async function moverLoteFisico(sel){
+async function moverLoteFisico(sel){
   try{verificarMovimentoFisico(sel);}
   catch(e){alert(e.message||String(e));return;}
   const destinos=[];
