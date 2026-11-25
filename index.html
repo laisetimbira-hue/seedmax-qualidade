@@ -3054,7 +3054,19 @@ function invOrigemBenef(cultivar, cultura, d) {
     return { origem: 'propria' };
   }
   if (proprioOutraCultura) return { origem: 'conferir', motivo: 'Lote existe na produção própria com outra cultura' };
-  return { origem: 'conferir', motivo: 'Sem análise registrada (nem na produção própria nem na aba PGW)' };
+  // Sem análise não significa origem desconhecida.
+  // Respeitar a aba de Beneficiamento e preservar a separação PGW.
+  const abas = Array.isArray(d.linhas) ? d.linhas : [];
+  const abaPgw = abas.some(l =>
+    /\\bPGW\\b|PRESTA/.test(invNormTxt(l.aba || ''))
+  );
+
+  if (regPgw === true || abaPgw) {
+    return { origem: 'pgw', semAnalise: true };
+  }
+
+  return { origem: 'propria', semAnalise: true };
+
 }
 // todas as linhas do Beneficiamento já classificadas (cache por carga de dados)
 let _invBenefLinhas = null;
