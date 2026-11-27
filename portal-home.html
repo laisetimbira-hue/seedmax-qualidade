@@ -1126,6 +1126,164 @@
   color:#94a3b8;
   font-size:13px;
 }
+
+
+/* LOGIN MOBILE — iPhone e Android (só celular; o computador não muda)
+   - coluna única com rolagem: o conteúdo mais alto que a tela não é cortado nem sobreposto
+   - rodapé fixo deixa de flutuar sobre os cartões (inclui celular deitado)
+   - logo e campos proporcionais; campos com 16px para o iPhone não dar zoom ao tocar */
+@media (max-width: 900px), (hover: none) and (pointer: coarse) and (max-height: 560px) {
+  #portal-acesso.portal-acesso:not([hidden]) {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 22px;
+    height: auto; /* altura vem de inset:0 — acompanha a barra do Safari/Chrome */
+    padding: max(22px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+             max(28px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  /* centraliza quando cabe e rola a partir do topo quando não cabe (margens automáticas zeram) */
+  #portal-acesso .original-esquerda,
+  #portal-acesso .original-cartao {
+    flex-shrink: 0;
+    align-self: center;
+    width: 100%;
+    transform: none;
+  }
+  #portal-acesso .original-esquerda {
+    max-width: 480px;
+    margin-top: auto;
+    text-align: center;
+  }
+  #portal-acesso .original-cartao {
+    max-width: 420px !important;
+    margin-bottom: auto;
+    padding: 24px 20px 18px !important;
+  }
+
+  #portal-acesso .original-sobre {
+    font-size: 10px;
+    letter-spacing: .18em;
+    margin-bottom: 12px;
+  }
+  #portal-acesso .original-logo {
+    font-size: clamp(56px, 18vw, 88px);
+    line-height: .9;
+    margin: 0 0 14px;
+  }
+  #portal-acesso .original-logo span + span {
+    margin-top: 4px;
+  }
+  #portal-acesso .original-descricao {
+    max-width: 360px;
+    margin: 0 auto 16px;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+
+  #portal-acesso .original-mini-modulos {
+    width: 100%;
+    max-width: 480px;
+    margin: 0 auto;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+  #portal-acesso .original-mini {
+    min-width: 0;
+    min-height: 0;
+    height: auto;
+    padding: 10px 8px 10px 11px;
+    gap: 8px;
+  }
+  #portal-acesso .mini-texto {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  #portal-acesso .original-rodape {
+    position: static;
+    width: auto;
+    margin: 16px 0 0 !important;
+    font-size: 8.5px;
+    letter-spacing: .24em;
+  }
+
+  #portal-acesso .original-cartao h1 {
+    margin: 14px 0 6px !important;
+    font-size: 23px !important;
+  }
+  #portal-acesso .original-ajuda {
+    margin-bottom: 16px !important;
+    font-size: 13px;
+  }
+  #portal-acesso #portal-form input {
+    min-height: 48px;
+    padding: 12px 14px;
+    margin-bottom: 14px !important;
+    font-size: 16px;
+  }
+  #portal-acesso .login-senha {
+    margin-bottom: 14px;
+  }
+  #portal-acesso .login-senha #portal-senha {
+    margin-bottom: 0 !important;
+    padding-right: 50px;
+  }
+  #portal-acesso #portal-ver-senha {
+    top: 50%;
+    right: 4px;
+    width: 42px;
+    height: 42px;
+    transform: translateY(-50%);
+  }
+  #portal-acesso #portal-form .login-entrar {
+    min-height: 50px;
+    padding: 14px;
+    font-size: 16px;
+  }
+}
+
+/* celulares estreitos: cartões dos módulos em pé (ícone em cima), sem texto espremido */
+@media (max-width: 480px) {
+  #portal-acesso .original-mini {
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    text-align: center;
+    gap: 6px;
+    padding: 10px 6px 11px;
+  }
+  #portal-acesso .original-mini::before {
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: auto;
+    width: auto;
+    height: 3px;
+  }
+  #portal-acesso .mini-icone {
+    width: 30px;
+    height: 30px;
+    min-width: 30px;
+  }
+  #portal-acesso .mini-icone svg {
+    width: 18px;
+    height: 18px;
+  }
+  #portal-acesso .original-mini strong {
+    font-size: 12px !important;
+  }
+  #portal-acesso .original-mini small {
+    font-size: 10.5px !important;
+    line-height: 1.3;
+  }
+}
 </style>
 </head>
 <body>
