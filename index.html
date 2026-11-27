@@ -1311,9 +1311,9 @@ html {
   const PERFIS_LOGIN = ['ADMIN', 'QUALIDADE', 'TSI', 'RASTREL', 'VISUALIZACAO'];
 
   // Nomes dos conjuntos de dados que o dashboard espera encontrar.
-  const SEEDMAX_DATASETS = ["LOTS", "SUMMARY", "SUMMARY_PREV", "PMS_CV", "LOTES_COMPRADOS", "NOSSO_PLANTIO", "LOTS_INVERNO", "NOSSO_PLANTIO_INVERNO", "LOTES_COMPRADOS_INVERNO", "CV_META_INVERNO", "BENEF_INVERNO", "LOTS_SERVICO_INVERNO", "HISTORICO_APROVACAO", "MUDANCAS_RECENTES", "BENEF", "DIAG_DATA", "TZ_DATA", "CAMPOS_SIGEF", "CV_META", "CV_UBS"];
+  const SEEDMAX_DATASETS = ["LOTS", "SUMMARY", "SUMMARY_PREV", "PMS_CV", "LOTES_COMPRADOS", "NOSSO_PLANTIO", "LOTS_INVERNO", "NOSSO_PLANTIO_INVERNO", "LOTES_COMPRADOS_INVERNO", "CV_META_INVERNO", "BENEF_INVERNO", "LOTS_SERVICO_INVERNO", "HISTORICO_APROVACAO", "MUDANCAS_RECENTES", "BENEF", "DIAG_DATA", "TZ_DATA", "CAMPOS_SIGEF", "CV_META", "CV_UBS", "LOCAL_RASTREL_INVERNO"];
 
-  const SEEDMAX_DATASETS_OPCIONAIS = ["LOTS_SERVICO_INVERNO"];
+  const SEEDMAX_DATASETS_OPCIONAIS = ["LOTS_SERVICO_INVERNO", "LOCAL_RASTREL_INVERNO"];
 
   firebase.initializeApp(SEEDMAX_FIREBASE_CONFIG);
   const smAuth = firebase.auth();
@@ -2998,6 +2998,44 @@ function invBenefEsc(v) {
   return v == null ? '' : String(v).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 }
 
+// ---- Localização atual do lote no RASTREL ----
+// LOCAL_RASTREL_INVERNO é publicado pelo robô da Central de Lotes (leitura somente
+// leitura do RASTREL: bags.localizacao_atual — com tag e aguardando_tag — e mapa/fisico),
+// por lotId (Safra + Cultura + Lote). Sem posição confiável no RASTREL, vale a
+// localização digitada na planilha. Só leitura: não grava nada.
+function invLocalRastrel(d) {
+  const L = (typeof LOCAL_RASTREL_INVERNO !== 'undefined' && LOCAL_RASTREL_INVERNO && LOCAL_RASTREL_INVERNO.lotes) || {};
+  const r = d && d.lotId ? L[d.lotId] : null;
+  return r && Array.isArray(r.posicoes) ? r : null;
+}
+function invLocaisDe(d) {
+  const r = invLocalRastrel(d);
+  if (r && r.posicoes.length) return r.posicoes.map(p => p.posicao);
+  return d && d.localizacao ? [d.localizacao] : [];
+}
+const INV_LOCAL_FONTE = { tag: 'tag NFC', sem_tag: 'sem tag', mapa: 'mapa' };
+function invLocalHtml(d) {
+  const e = invBenefEsc, r = invLocalRastrel(d);
+  const quando = (typeof LOCAL_RASTREL_INVERNO !== 'undefined' && LOCAL_RASTREL_INVERNO && LOCAL_RASTREL_INVERNO.atualizadoEm) || '';
+  const avisos = r && r.avisos && r.avisos.length ? r.avisos : [];
+  const aviso = avisos.length ? ` <span title="${e(avisos.join('\n'))}" style="color:#B45309;cursor:help;">⚠</span>` : '';
+  if (r && r.posicoes.length) {
+    const tit = 'Localização atual no RASTREL' + (quando ? ' (atualizado em ' + quando + ')' : '') +
+      (d.localizacao ? '\nPlanilha: ' + d.localizacao : '');
+    const linhas = r.posicoes.map(p => {
+      const q = p.bags != null ? p.bags.toLocaleString('pt-BR') + ' BB' : (p.qtd || '');
+      return `<div style="white-space:nowrap;"><b>${e(p.posicao)}</b>${q ? ' · ' + e(q) : ''}` +
+        ` <span style="font-size:0.66rem;color:var(--texto2);">${e(INV_LOCAL_FONTE[p.fonte] || p.fonte)}${p.misto ? ' · célula com outros lotes' : ''}</span></div>`;
+    }).join('');
+    const extra = [r.semPosicao ? r.semPosicao + ' bag(s) sem posição' : '', r.expedidos ? r.expedidos + ' expedido(s)' : ''].filter(Boolean).join(' · ');
+    return `<div title="${e(tit)}">${linhas}${extra ? `<div style="font-size:0.66rem;color:var(--texto2);">${e(extra)}</div>` : ''}<div style="font-size:0.6rem;color:#15803D;font-weight:700;">RASTREL${aviso}</div></div>`;
+  }
+  const nota = [r && r.expedidos ? r.expedidos + ' bag(s) expedido(s) no RASTREL' : '', r && r.semPosicao ? r.semPosicao + ' bag(s) sem posição no RASTREL' : ''].filter(Boolean).join(' · ');
+  if (!d.localizacao && !nota) return '—' + aviso;
+  return (d.localizacao ? `${e(d.localizacao)} <span style="font-size:0.6rem;color:var(--texto2);" title="Sem posição atual no RASTREL: localização da planilha">planilha</span>` : '—') +
+    (nota ? `<div style="font-size:0.66rem;color:var(--texto2);">${e(nota)}</div>` : '') + aviso;
+}
+
 // ---- Origem de cada linha do Beneficiamento: 'propria' | 'pgw' | 'conferir' ----
 // A planilha de Beneficiados não traz empresa/origem. A origem vem:
 //   1) da origem registrada na linha, se um dia existir (d.origem / d.empresa);
@@ -3154,7 +3192,7 @@ function renderInvBenefConferir(linhas) {
       <table class="invb-tabela"><thead><tr><th>Lote</th><th>Cultivar</th><th>Cultura</th><th class="num">Nº BB</th><th class="num">Total kg</th><th>Localização</th><th>Por que conferir</th></tr></thead>
       <tbody>${linhas.map(x => `<tr><td style="font-weight:700;">${e(x.d.lote)}</td><td>${e(x.cultivar)}</td><td>${e(x.cultura)}</td>
         <td class="num">${(x.d.bags || 0).toLocaleString('pt-BR')}</td><td class="num">${(x.d.kg || 0).toLocaleString('pt-BR')}</td>
-        <td>${e(x.d.localizacao) || '—'}</td><td class="invb-motivo">${e(x.motivo)}</td></tr>`).join('')}</tbody>
+        <td>${invLocalHtml(x.d)}</td><td class="invb-motivo">${e(x.motivo)}</td></tr>`).join('')}</tbody>
       <tfoot><tr><td colspan="3">Total a conferir</td><td class="num">${bags.toLocaleString('pt-BR')}</td><td class="num">${kg.toLocaleString('pt-BR')}</td><td colspan="2"></td></tr></tfoot></table>
     </div></details>`;
 }
@@ -3167,7 +3205,7 @@ function buildInvernoBenef() {
   if (!(dados.length || temServico) || invBenefBuilt) { if (dados.length || temServico) filterInvernoBenef(); return; }
   invBenefBuilt = true;
   const culturas = [...new Set(dados.map(invBenefCultura).concat(invServico().map(invServicoCulturaTxt)))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  const locais = [...new Set(dados.flatMap(c => c.localizacoes || []))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const locais = [...new Set(dados.flatMap(c => (c.detail || []).flatMap(invLocaisDe)))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   document.getElementById('inv-benef-cultura').innerHTML = '<option value="">Todas as culturas</option>' +
     culturas.map(c => `<option value="${invBenefEsc(c)}">${invBenefEsc(c)}</option>`).join('');
   document.getElementById('inv-benef-local').innerHTML = '<option value="">Todas as localizações</option>' +
@@ -3185,7 +3223,7 @@ function filterInvernoBenef() {
   const todas = invBenefLinhas();
   const passa = x => {
     if (cult && x.cultura !== cult) return false;
-    if (loc && x.d.localizacao !== loc) return false;
+    if (loc && !invLocaisDe(x.d).includes(loc)) return false;
     return !q || String(x.cultivar || '').toLowerCase().includes(q) || x.cultura.toLowerCase().includes(q) || String(x.d.lote || '').toLowerCase().includes(q);
   };
   const contar = o => { const ls = todas.filter(x => x.origem === o); return { lotes: new Set(ls.map(x => invNormTxt(x.d.lote))).size, kg: ls.reduce((s, x) => s + (x.d.kg || 0), 0) }; };
@@ -3233,7 +3271,7 @@ function filterInvernoBenef() {
       bags: detail.reduce((s, d) => s + (d.bags || 0), 0),
       kg: detail.reduce((s, d) => s + (d.kg || 0), 0),
       lotes: new Set(detail.map(d => d.lote)).size,
-      locais: [...new Set(detail.map(d => d.localizacao).filter(Boolean))],
+      locais: [...new Set(detail.flatMap(invLocaisDe))],
     };
   }).filter(Boolean);
 
@@ -3319,7 +3357,7 @@ function filterInvernoBenef() {
         <td class="num">${(d.bags || 0).toLocaleString('pt-BR')}</td>
         <td class="num">${d.peso_bag != null ? d.peso_bag.toLocaleString('pt-BR') + ' kg' : '—'}</td>
         <td class="num">${(d.kg || 0).toLocaleString('pt-BR')}</td>
-        <td>${invBenefEsc(d.localizacao) || '—'}</td>
+        <td>${invLocalHtml(d)}</td>
         ${comQual ? qualCelulas(d) : ''}
         <td class="obs">${invBenefEsc(d.observacoes) || ''}${comQual ? qualObs(d) : ''}</td>
       </tr>`).join('');
@@ -3330,7 +3368,7 @@ function filterInvernoBenef() {
           <span style="font-size:0.62rem;font-weight:700;color:var(--texto2);">${invBenefEsc(d.categoria) || ''} · ${invBenefEsc(d.peneira) || ''}</span>
         </div>
         <div class="lin"><span>${invBenefEsc(d.embalagem) || '—'} · ${d.peso_bag != null ? d.peso_bag.toLocaleString('pt-BR') + ' kg/bag' : '—'}</span><b>${(d.bags || 0).toLocaleString('pt-BR')} bags</b></div>
-        <div class="lin"><span>${invBenefEsc(d.localizacao) || '—'}</span><b>${(d.kg || 0).toLocaleString('pt-BR')} kg</b></div>
+        <div class="lin"><span>${invLocalHtml(d)}</span><b>${(d.kg || 0).toLocaleString('pt-BR')} kg</b></div>
         ${d.observacoes ? `<div class="lin"><span>Obs.: ${invBenefEsc(d.observacoes)}</span></div>` : ''}
         ${comQual ? qualCard(d) : ''}
       </div>`).join('');
@@ -3344,7 +3382,7 @@ function filterInvernoBenef() {
           <div style="font-weight:800;font-size:1rem;color:var(--texto);">${invBenefEsc(c.cultivar)}</div>
           <div style="display:flex;gap:5px;margin-top:5px;flex-wrap:wrap;">
             <span style="font-size:0.6rem;background:${cor}22;color:${cor};border:1px solid ${cor}55;border-radius:4px;padding:2px 7px;font-weight:700;">${invBenefEsc(c.cultura)}</span>
-            ${c.locais.map(l => `<span style="font-size:0.6rem;background:#EFF6FF;color:#2563EB;border:1px solid #BFDBFE;border-radius:4px;padding:2px 7px;font-weight:700;">${invBenefEsc(l)}</span>`).join('')}
+            ${c.locais.slice(0, 8).map(l => `<span style="font-size:0.6rem;background:#EFF6FF;color:#2563EB;border:1px solid #BFDBFE;border-radius:4px;padding:2px 7px;font-weight:700;">${invBenefEsc(l)}</span>`).join('')}${c.locais.length > 8 ? `<span style="font-size:0.6rem;color:var(--texto2);padding:2px 4px;font-weight:700;">+${c.locais.length - 8}</span>` : ''}
           </div>
         </div>
         <div class="invb-metricas">

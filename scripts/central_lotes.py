@@ -857,7 +857,45 @@ def ler_rastrel():
     c = _cliente_leitura(PROJETO_RASTREL, "RASTREL_CREDENCIAIS")
     return _ler_colecao(c, "bags",
                         ["lote", "epc", "cultivar_nome", "categoria", "peneira", "peso_kg", "tratamento", "status",
-                         "safra", "cultura"])
+                         "safra", "cultura", "localizacao_atual"])
+
+
+def ler_mapa_fisico():
+    """Documento mapa/fisico do RASTREL (mapa do Excel + lotes cadastrados no mapa).
+    Só leitura, mesma credencial federada. Ausente → None."""
+    c = _cliente_leitura(PROJETO_RASTREL, "RASTREL_CREDENCIAIS")
+    d = c.collection("mapa").document("fisico").get()
+    return d.to_dict() if d.exists else None
+
+
+def publicar_localizacao_inverno(dados, bags, simular=False, carimbo=None):
+    """Monta e publica qualidade/LOCAL_RASTREL_INVERNO (localização atual no RASTREL
+    dos lotes do Beneficiamento de Inverno). Só grava quando o conteúdo muda
+    (o carimbo não entra na comparação). Nada é gravado no RASTREL."""
+    import localizacao_rastrel as lr
+    import seedmax_dados as store
+    try:
+        fisico, erro_mapa = ler_mapa_fisico(), None
+    except Exception as e:  # noqa: BLE001 — sem o mapa, segue só com os bags
+        fisico, erro_mapa = None, f"{type(e).__name__}: {e}"
+    lotes = lr.resumir(bags, fisico, dados.get("BENEF_INVERNO"),
+                       lr.codigos_de_outras_safras(dados, bags))
+    fontes = {"bags": True, "mapaFisico": fisico is not None}
+    n_pos = sum(1 for x in lotes.values() if x.get("posicoes"))
+    print(f"Localização RASTREL (Inverno): {n_pos} lotes do Beneficiamento com posição atual · "
+          f"{sum(1 for x in lotes.values() if x.get('avisos'))} com aviso · mapa/fisico "
+          + ("lido" if fisico is not None else f"NÃO lido ({erro_mapa or 'documento não existe'})"))
+    atual = dados.get(lr.CONJUNTO) or {}
+    if isinstance(atual, dict) and atual.get("lotes") == lotes and atual.get("fontes") == fontes:
+        print(f"{lr.CONJUNTO}: sem mudança")
+        return False
+    if simular:
+        print(f"{lr.CONJUNTO}: mudou (SIMULAÇÃO — nada gravado)")
+        return False
+    novo = {"atualizadoEm": carimbo, "fontes": fontes, "lotes": lotes}
+    store.publicar(store.conectar(), {lr.CONJUNTO: novo}, carimbo, renovar_verificacao=False)
+    print(f"{lr.CONJUNTO}: publicado ({len(lotes)} lotes)")
+    return True
 
 
 def provar_somente_leitura():
@@ -1015,9 +1053,10 @@ def sincronizar(simular=False):
             print(f"TSI: ATENÇÃO — ordens gravadas com safra desconhecida (lidas como {SAFRA_VERAO}): {outras}")
     else:
         print("TSI: não conectado")
-    r = {}
+    r, bags_rastrel = {}, None
     if rastrel_on:
-        r = resumir_rastrel(ler_rastrel())
+        bags_rastrel = ler_rastrel()
+        r = resumir_rastrel(bags_rastrel)
         print(f"RASTREL: {sum(x['bags'] for x in r.values())} bags → {len(r)} lotes")
     else:
         print("RASTREL: não conectado")
@@ -1050,6 +1089,13 @@ def sincronizar(simular=False):
           + (" (SIMULAÇÃO — nada gravado)" if simular else ""))
     if p["perdidos"]:
         print("Sumiram de todas as fontes:", ", ".join(sorted(p["perdidos"])[:50]))
+    # Localização atual (RASTREL) do Beneficiamento de Inverno. Falha aqui não
+    # desfaz nem bloqueia a Central: a tela continua com a localização da planilha.
+    if bags_rastrel is not None:
+        try:
+            publicar_localizacao_inverno(dados, bags_rastrel, simular=simular, carimbo=carimbo)
+        except Exception as e:  # noqa: BLE001
+            print(f"::warning::Localização RASTREL (Inverno) não publicada: {type(e).__name__}: {e}")
 
 
 if __name__ == "__main__":

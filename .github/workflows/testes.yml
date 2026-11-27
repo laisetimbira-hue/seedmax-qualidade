@@ -5,7 +5,7 @@ name: Testes de segurança (regras do Firestore)
 
 on:
   push:
-    paths: ['firestore.rules', 'tests/**', 'scripts/central_lotes.py', '.github/workflows/testes.yml']
+    paths: ['firestore.rules', 'tests/**', 'scripts/central_lotes.py', 'scripts/localizacao_rastrel.py', 'index.html', '.github/workflows/testes.yml']
   pull_request:
   workflow_dispatch:
 
@@ -39,4 +39,6 @@ jobs:
         with:
           python-version: '3.12'
       - name: Testar a consolidação da Central de Lotes
-        run: pip install --quiet pytest && python -m pytest tests/test_central_lotes.py tests/test_regra_id_lote.py -q
+        run: pip install --quiet pytest && python -m pytest tests/test_central_lotes.py tests/test_regra_id_lote.py tests/test_localizacao_rastrel.py -q
+      - name: Testar a localização do RASTREL na tela do Beneficiamento de Inverno
+        run: node --test tests/tela-local-rastrel.test.mjs

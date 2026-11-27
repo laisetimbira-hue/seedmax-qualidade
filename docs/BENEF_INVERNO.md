@@ -99,3 +99,42 @@ O computador precisa estar ligado, com acesso ao servidor e saída HTTPS para
 * `node --test ponte/test/*.test.js` — função (validação, autenticação, só BENEF_INVERNO).
 * `tests/e2e_benef_inverno/emulador.py` — ponta a ponta nos emuladores oficiais
   (Auth + Firestore + Functions, projeto `demo-seedmax`).
+
+## Localização atual do lote (RASTREL)
+
+Na tabela **Inverno › Beneficiamento**, a coluna *Localização* mostra a posição
+atual do lote no RASTREL; a localização digitada na planilha só aparece (marcada
+"planilha") quando o RASTREL não tem informação confiável sobre o lote.
+
+```
+RASTREL (rastreabilidade-a511a) ── leitura, credencial federada somente leitura ──┐
+  bags.localizacao_atual  (em_estoque com tag NFC + aguardando_tag, sem tag)      │
+  mapa/fisico             (mapa do Excel + lotes cadastrados direto no mapa)      │
+                                                                                  ▼
+GitHub Actions "Central de Lotes" (scripts/central_lotes.py → localizacao_rastrel.py)
+  grava SÓ qualidade/LOCAL_RASTREL_INVERNO__0 (+ entrada no _meta), e só quando muda
+                                                                                  ▼
+app.seedmax.com.br › Inverno › Beneficiamento (somente leitura)
+```
+
+* **Credencial:** a mesma da Central de Lotes — Workload Identity Federation, conta
+  `central-lotes-leitura@rastreabilidade-a511a` com *Leitor do Cloud Datastore*, sem
+  chave JSON, só a branch `main` deste repositório. O passo "Provar que TSI/RASTREL
+  estão somente leitura" continua exigindo escrita recusada. Nenhuma regra do
+  Firestore muda e nada é liberado para leitura pública: o navegador lê o conjunto
+  em `qualidade/*`, com os mesmos perfis de sempre (ADMIN, QUALIDADE, VISUALIZACAO).
+* **Nada é gravado no RASTREL** (bags, tags, movimentações, mapa) nem em outro
+  conjunto do SEEDMAX.
+* **Vínculo:** pelo `lotId` (Safra + Cultura + Lote, `INV2626_<CULTURA>_<LOTE>`).
+  Bags usam a safra/cultura gravadas no próprio bag (bag antigo sem safra = Verão,
+  nunca casa com o Inverno). Pilhas do mapa não têm lotId: casam pelo código do
+  lote e, quando houver, safra, cultura/espécie e cultivar. Lote homônimo que
+  continue ambíguo **não é vinculado** (aparece ⚠ com o motivo e vale a planilha).
+* **Várias posições:** todas aparecem, com a quantidade de bags e a origem
+  (`tag NFC`, `sem tag`, `mapa`). Mesma regra do mapa do RASTREL: se o lote tem bag
+  com tag em estoque e posicionado, a pilha do Excel desse lote é ignorada; se
+  todos os bags com tag já foram expedidos, também.
+* **Sem o conjunto** (robô ainda não rodou, RASTREL desligado com
+  `CENTRAL_RASTREL`, `mapa/fisico` ilegível) a tela continua igual, com a
+  planilha. Falha nessa etapa não interrompe a sincronização da Central.
+* Testes: `tests/test_localizacao_rastrel.py` e `tests/tela-local-rastrel.test.mjs`.

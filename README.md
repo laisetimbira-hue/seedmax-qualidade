@@ -32,6 +32,7 @@ Firestore: qualidade/*  →  dashboard roda com os dados
 | `.github/workflows/testes.yml` | Testa as regras no emulador oficial do Firebase. |
 | `tests/` | Testes das regras e teste de ponta a ponta do login. |
 | `scripts/central_lotes.py` | Central de Lotes: resumo `lots/{lotId}` a partir de Qualidade, TSI e RASTREL (somente leitura). |
+| `scripts/localizacao_rastrel.py` | Localização atual no RASTREL dos lotes do Beneficiamento de Inverno (conjunto `LOCAL_RASTREL_INVERNO`, publicado pelo robô da Central; somente leitura do RASTREL). |
 | `.github/workflows/central-lotes.yml` | Sincronização da Central de Lotes (de hora em hora; TSI/RASTREL via Workload Identity Federation). |
 
 Central de Lotes: [`docs/CENTRAL_LOTES.md`](docs/CENTRAL_LOTES.md).
