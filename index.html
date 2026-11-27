@@ -6359,13 +6359,7 @@ window.addEventListener('load', function() {
 });
 
 function doLogout() {
-  document.body.classList.add('locked');
-  document.getElementById('login-screen').style.display = 'flex';
-  document.getElementById('pw-input').value = '';
-  mapaUnlocked = false;
-  diagUnlocked = false;
-  window.scrollTo(0, 0);
-  setTimeout(() => document.getElementById('pw-input').focus(), 100);
+  window.location.assign('/');
 }
 
 
