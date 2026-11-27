@@ -5,6 +5,7 @@
 #   bash executar.sh guardar   -> envia a cópia para o bucket privado e confere baixando de volta
 #   bash executar.sh exportar  -> exportação OFICIAL do Firestore para o bucket privado e confere
 #   bash executar.sh funcao    -> registra a versão publicada de sincronizarBenefInverno e guarda o código
+#   bash executar.sh totais    -> totais e lotes atuais, logo antes do merge
 #   bash executar.sh resumo    -> mostra o que já foi feito
 #   bash executar.sh depois    -> (após a publicação) totais atuais comparados com os de antes
 #
@@ -64,51 +65,128 @@ guardar)
   ok "cópia no bucket conferida (baixada de volta e verificada): $BUCKET/json/$N/"
   ;;
 exportar)
+  # Exportação oficial: inicia em modo assíncrono e acompanha a operação até o estado final.
+  # Limite de espera: EXPORT_LIMITE_MIN (padrão 60). Ao estourar, NÃO cancela: a operação segue no
+  # Google e "bash executar.sh exportar" retoma o acompanhamento da mesma operação.
+  # Se a operação anterior falhou: NOVA=1 bash executar.sh exportar (inicia outra, em pasta nova).
   D=$(atual); N=$(basename "$D")
   gcloud storage buckets describe $BUCKET >/dev/null 2>&1 || erro "rode antes: bash executar.sh guardar"
-  DEST="$BUCKET/export/$N"
-  gcloud firestore export "$DEST" --database='(default)' --format=json > "$D/export-op.json"
-  OP=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["name"])' "$D/export-op.json")
-  gcloud firestore operations describe "$OP" --format=json > "$D/export-final.json"
-  python3 - "$D/export-final.json" <<'P'
+  [ -s "$D/guardado.txt" ] || erro "rode antes: bash executar.sh guardar"
+  LIMITE=${EXPORT_LIMITE_MIN:-60}
+  if [ -s "$D/exportado.txt" ] && [ -z "${NOVA:-}" ]; then ok "exportação já concluída: $(cat "$D/exportado.txt")"; exit 0; fi
+  if [ -s "$D/export-op.txt" ] && [ -z "${NOVA:-}" ]; then
+    OP=$(cat "$D/export-op.txt"); DEST=$(cat "$D/export-destino.txt"); echo "retomando a operação já iniciada: $OP"
+  else
+    DEST="$BUCKET/export/$N-$(date +%H%M%S)"
+    gcloud firestore export "$DEST" --database='(default)' --async --format=json > "$D/export-inicio.json"
+    OP=$(python3 -c 'import json,sys;d=json.load(open(sys.argv[1]));print((d[0] if isinstance(d,list) else d)["name"])' "$D/export-inicio.json")
+    [ -n "$OP" ] || erro "não consegui o nome da operação de exportação"
+    echo "$OP" > "$D/export-op.txt"; echo "$DEST" > "$D/export-destino.txt"; rm -f "$D/exportado.txt"
+    ok "exportação iniciada: $OP"
+  fi
+  FIM=$(( $(date +%s) + LIMITE * 60 )); FALHAS=0
+  while :; do
+    if ! gcloud firestore operations describe "$OP" --format=json > "$D/export-final.json" 2>"$D/export-erro.log"; then
+      FALHAS=$((FALHAS + 1)); [ $FALHAS -ge 6 ] && erro "não consigo consultar a operação ($(tail -1 "$D/export-erro.log")); retome com: bash executar.sh exportar"
+      sleep "${EXPORT_INTERVALO_S:-20}"; continue
+    fi
+    FALHAS=0
+    ESTADO=$(python3 - "$D/export-final.json" <<'P'
 import json, sys
-o = json.load(open(sys.argv[1])); m = o.get("metadata", {})
-estado = m.get("operationState"); print("estado:", estado, "| docs:", m.get("progressDocuments", {}).get("completedWork"), "| fim:", m.get("endTime"))
-sys.exit(0 if o.get("done") and estado == "SUCCESSFUL" and "error" not in o else 1)
+o = json.load(open(sys.argv[1])); m = o.get("metadata", {}); e = m.get("operationState", "?")
+if o.get("error"): e = "FAILED"
+done = "1" if o.get("done") else "0"
+docs = (m.get("progressDocuments") or {}).get("completedWork", "0")
+print(e, done, docs, (o.get("error") or {}).get("message", "").replace(" ", "_")[:200])
 P
-  gcloud storage ls "$DEST/**" | grep -q 'overall_export_metadata' || erro "exportação sem arquivo de metadados"
+)
+    read -r E DONE DOCS MSG <<<"$ESTADO"
+    case "$E" in
+      SUCCESSFUL) [ "$DONE" = 1 ] && break ;;
+      FAILED|CANCELLED|CANCELLING) erro "exportação terminou em $E ${MSG//_/ } — nada foi alterado; para tentar de novo: NOVA=1 bash executar.sh exportar" ;;
+    esac
+    [ "$(date +%s)" -ge $FIM ] && { echo "⏱ limite de $LIMITE min atingido (estado $E, $DOCS docs). A operação NÃO foi cancelada."; echo "  retome com: bash executar.sh exportar"; exit 4; }
+    echo "  … $E, $DOCS documentos exportados"; sleep "${EXPORT_INTERVALO_S:-20}"
+  done
+  PREFIXO=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["metadata"].get("outputUriPrefix",""))' "$D/export-final.json")
+  [ "$PREFIXO" = "$DEST" ] || erro "destino da exportação inesperado: $PREFIXO"
+  gcloud storage ls -r "$DEST" > "$D/export-arquivos.txt"
+  grep -q 'overall_export_metadata$' "$D/export-arquivos.txt" || erro "exportação sem arquivo de metadados"
+  grep -q 'output-' "$D/export-arquivos.txt" || erro "exportação sem arquivos de dados"
   echo "$DEST" > "$D/exportado.txt"
-  ok "exportação oficial concluída: $DEST"
-  echo "  restaurar (só em emergência): gcloud firestore import $DEST"
+  ok "exportação oficial concluída ($DOCS documentos): $DEST"
+  echo "  restaurar (SÓ em emergência e com aprovação): gcloud firestore import $DEST"
   ;;
 funcao)
-  D=$(atual)
+  # Registra a versão publicada de sincronizarBenefInverno e guarda o necessário para voltar a ela.
+  D=$(atual); F="$D/funcao"; mkdir -p "$F"
   NOME=$(gcloud functions list --filter="name~/functions/$FUNCAO\$" --format='value(name)' | head -1)
   [ -n "$NOME" ] || erro "função $FUNCAO não encontrada"
   REG=$(echo "$NOME" | cut -d/ -f4)
-  gcloud functions describe $FUNCAO --region="$REG" --format=json > "$D/funcao-antes.json"
-  python3 - "$D/funcao-antes.json" <<'P' | tee "$D/funcao-antes.txt"
-import json, sys
-f = json.load(open(sys.argv[1])); s = f.get("serviceConfig", {}); b = f.get("buildConfig", {}); src = b.get("source", {}).get("storageSource", {})
-print("função:", f["name"]); print("estado:", f.get("state"), "| atualizada em:", f.get("updateTime"))
-print("revisão no ar:", s.get("revision")); print("runtime:", b.get("runtime"), "| entrada:", b.get("entryPoint"))
-print("código-fonte: gs://%s/%s#%s" % (src.get("bucket"), src.get("object"), src.get("generation")))
+  gcloud functions describe $FUNCAO --region="$REG" --format=json > "$F/funcao.json"
+  python3 - "$F/funcao.json" > "$F/campos.env" <<'P'
+import json, sys, shlex
+f = json.load(open(sys.argv[1])); s = f.get("serviceConfig", {}); b = f.get("buildConfig", {}); src = (b.get("source") or {}).get("storageSource") or {}
+if f.get("environment") != "GEN_2": sys.exit("função não é de 2ª geração: " + str(f.get("environment")))
+v = {"ESTADO": f.get("state"), "ATUALIZADA": f.get("updateTime"), "REVISAO": s.get("revision"),
+     "SERVICO": (s.get("service") or "").split("/")[-1], "RUNTIME": b.get("runtime"), "ENTRADA": b.get("entryPoint"),
+     "CONTA": s.get("serviceAccountEmail"), "FONTE": "gs://%s/%s#%s" % (src.get("bucket"), src.get("object"), src.get("generation"))}
+for k, x in v.items(): print(f"{k}={shlex.quote(str(x))}")
 P
-  SRC=$(python3 -c 'import json,sys;s=json.load(open(sys.argv[1]))["buildConfig"]["source"]["storageSource"];print("gs://%s/%s#%s"%(s["bucket"],s["object"],s["generation"]))' "$D/funcao-antes.json")
-  gcloud storage cp "$SRC" "$D/funcao-fonte-antes.zip" && ok "código publicado da função copiado"
-  [ -d "$HOME/seedmax-ponte/functions" ] && tar -czf "$D/seedmax-ponte-functions-antes.tgz" --exclude=node_modules -C "$HOME/seedmax-ponte" functions && ok "pasta ~/seedmax-ponte/functions copiada"
-  if gcloud storage buckets describe $BUCKET >/dev/null 2>&1; then
-    gcloud storage cp "$D"/funcao-* "$BUCKET/json/$(basename "$D")/" >/dev/null && ok "registro da função também no bucket"
+  # shellcheck disable=SC1091
+  . "$F/campos.env"
+  [ "$ESTADO" = ACTIVE ] || erro "função não está ACTIVE ($ESTADO)"
+  gcloud run services describe "$SERVICO" --region="$REG" --format=json > "$F/servico-run.json"
+  gcloud run revisions describe "$REVISAO" --region="$REG" --format=json > "$F/revisao-run.json"
+  IMAGEM=$(python3 -c 'import json,sys;r=json.load(open(sys.argv[1]));c=r["spec"]["containers"][0]["image"];d=r.get("status",{}).get("imageDigest","");print(d or c)' "$F/revisao-run.json")
+  if gcloud artifacts docker images describe "$IMAGEM" >/dev/null 2>&1; then IMG_OK=sim; else IMG_OK=nao; fi
+  gcloud storage cp "$FONTE" "$F/fonte-publicada.zip" >/dev/null
+  unzip -tq "$F/fonte-publicada.zip" >/dev/null || erro "zip do código publicado corrompido"
+  unzip -l "$F/fonte-publicada.zip" | grep -q 'package.json' || erro "zip do código publicado sem package.json"
+  if [ -d "$HOME/seedmax-ponte" ]; then
+    tar -czf "$F/seedmax-ponte-antes.tgz" --exclude=node_modules --exclude=.git -C "$HOME" seedmax-ponte
+    tar -tzf "$F/seedmax-ponte-antes.tgz" | grep -q 'seedmax-ponte/firebase.json' || erro "cópia da pasta da ponte sem firebase.json"
+  else
+    erro "pasta ~/seedmax-ponte não encontrada (é dela que a função é publicada)"
   fi
+  cat > "$F/ROLLBACK.txt" <<R
+Função: $NOME
+Versão publicada antes do PR #33: revisão $REVISAO (atualizada em $ATUALIZADA)
+Imagem: $IMAGEM  (ainda existe no Artifact Registry: $IMG_OK)
+Código publicado: $FONTE  -> cópia em fonte-publicada.zip
+
+Voltar RÁPIDO (só se a imagem ainda existir):
+  gcloud run services update-traffic $SERVICO --region=$REG --to-revisions=$REVISAO=100
+
+Voltar DEFINITIVO (recompila a versão anterior a partir da cópia da pasta da ponte):
+  T=\$(mktemp -d) && tar -xzf $F/seedmax-ponte-antes.tgz -C \$T && cd \$T/seedmax-ponte/functions && npm ci --omit=dev && cd .. \\
+    && firebase deploy --only functions:ponte:$FUNCAO --project $PROJ
+R
+  (cd "$F" && sha256sum ./* > SHA256SUMS)
+  if gcloud storage buckets describe $BUCKET >/dev/null 2>&1; then
+    gcloud storage cp -r "$F" "$BUCKET/json/$(basename "$D")/" >/dev/null
+    gcloud storage ls "$BUCKET/json/$(basename "$D")/funcao/" | grep -q ROLLBACK.txt || erro "cópia da função não chegou ao bucket"
+    ok "registro e código da função também no bucket"
+  fi
+  head -3 "$F/ROLLBACK.txt" | tee "$D/funcao-antes.txt"
+  ok "função registrada; imagem disponível para volta rápida: $IMG_OK; volta definitiva garantida pela cópia da pasta"
+  ;;
+totais)
+  # Totais atuais imediatamente antes do merge (referência para a conferência depois)
+  D=$(atual)
+  node "$JS" totais firestore "$D/totais-pre-merge.json" | tee "$D/totais-pre-merge.txt"
+  ok "totais antes do merge registrados"
   ;;
 resumo)
   D=$(atual); echo "pasta: $D"
-  for f in verificacao.log guardado.txt exportado.txt funcao-antes.txt; do [ -s "$D/$f" ] && echo "— $f: $(tail -1 "$D/$f")" || echo "— $f: (pendente)"; done
+  for f in verificacao.log guardado.txt exportado.txt funcao-antes.txt totais-pre-merge.txt; do [ -s "$D/$f" ] && echo "— $f: $(tail -1 "$D/$f")" || echo "— $f: (pendente)"; done
   ;;
 depois)
   D=$(atual); A="$D/totais-depois-$(date +%H%M%S).json"
   node "$JS" totais firestore "$A" | tee "${A%.json}.txt"
-  node "$JS" comparar "$D/totais-antes.json" "$A" || true
+  REF="$D/totais-pre-merge.json"; [ -s "$REF" ] || REF="$D/totais-antes.json"
+  echo "comparando com: $(basename "$REF")"
+  node "$JS" comparar "$REF" "$A" || true
   ;;
-*) sed -n '2,12p' "$0"; exit 64 ;;
+*) sed -n '2,13p' "$0"; exit 64 ;;
 esac

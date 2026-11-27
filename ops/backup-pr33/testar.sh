@@ -30,4 +30,17 @@ json.dump(d,open(t+"/depois.json","w"))
 P
 set +e; OUT=$(node $S comparar "$T/copia.json" "$T/depois.json"); RC=$?; set -e
 [ "$RC" = 3 ] && grep -q "SUMIRAM: PGW|Aveia Branca|PGWTESTE1" <<<"$OUT" || { echo "FALHA: lote sumido não apontado"; exit 1; }
+# ---- executar.sh: exportar e funcao com gcloud FALSO
+roda() { HOME="$T/h" PATH="$T/bin:$PATH" GSTATE="$T/g-$CENARIO" EXPORT_INTERVALO_S=0 bash executar.sh "$@"; }
+mkdir -p "$T/bin" "$T/h/seedmax-ponte/functions" && ln -sf "$PWD/teste/gcloud_falso.py" "$T/bin/gcloud" && echo '{}' > "$T/h/seedmax-ponte/firebase.json"
+D="$T/h/seedmax-backups/pr33-teste"; mkdir -p "$D"; echo "$D" > "$T/h/seedmax-backups/ATUAL"; echo gs://x > "$D/guardado.txt"
+CENARIO=ok roda exportar | tail -2 | grep -q "exportação oficial concluída (42 documentos)" || { echo "FALHA: exportar ok"; exit 1; }
+CENARIO=ok roda exportar | grep -q "já concluída" || { echo "FALHA: exportar repetido"; exit 1; }
+rm -f "$D"/export*; set +e; CENARIO=falha roda exportar >"$T/o" 2>&1; RC=$?; set -e
+[ $RC = 1 ] && grep -q "FAILED permission denied" "$T/o" && [ ! -e "$D/exportado.txt" ] || { echo "FALHA: exportar com falha"; cat "$T/o"; exit 1; }
+rm -f "$D"/export*; set +e; CENARIO=lento EXPORT_LIMITE_MIN=0 roda exportar >"$T/o" 2>&1; RC=$?; set -e
+[ $RC = 4 ] && grep -q "NÃO foi cancelada" "$T/o" && ! grep -q "operations cancel" "$T"/g-lento/chamadas.log || { echo "FALHA: limite de espera"; cat "$T/o"; exit 1; }
+CENARIO=ok roda funcao >"$T/o" 2>&1 || { echo "FALHA: funcao"; cat "$T/o"; exit 1; }
+grep -q "to-revisions=sincronizarbenefinverno-00003-abc=100" "$D/funcao/ROLLBACK.txt" && test -s "$D/funcao/fonte-publicada.zip" && tar -tzf "$D/funcao/seedmax-ponte-antes.tgz" | grep -q firebase.json || { echo "FALHA: arquivos da função"; exit 1; }
+grep -q "(ainda existe no Artifact Registry: sim)" "$D/funcao/ROLLBACK.txt" || { echo "FALHA: imagem"; exit 1; }
 echo "TESTES_OK"
