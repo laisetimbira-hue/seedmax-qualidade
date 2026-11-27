@@ -543,42 +543,42 @@ html {
 
   /* INVERNO: tabelas compactas como Verão 25-26 */
   #page-inverno-lotes table,
-  #page-inverno-pgw table {
+  #invb-servico-qualidade table {
     font-size: 0.66rem;
   }
 
   #page-inverno-lotes table thead th,
-  #page-inverno-pgw table thead th {
+  #invb-servico-qualidade table thead th {
     font-size: 0.64rem;
     padding: 7px 6px;
     line-height: 1.2;
   }
 
   #page-inverno-lotes table tbody td,
-  #page-inverno-pgw table tbody td {
+  #invb-servico-qualidade table tbody td {
     font-size: 0.66rem;
     padding: 5px 6px;
     line-height: 1.2;
   }
 
   #page-inverno-lotes .inv-lote-cod,
-  #page-inverno-pgw .inv-lote-cod {
+  #invb-servico-qualidade .inv-lote-cod {
     font-size: 0.72rem;
   }
 
   #page-inverno-lotes .inv-selo,
-  #page-inverno-pgw .inv-selo {
+  #invb-servico-qualidade .inv-selo {
     font-size: 0.68rem;
     padding: 2px 7px;
   }
 
   #page-inverno-lotes .inv-resultado,
-  #page-inverno-pgw .inv-resultado {
+  #invb-servico-qualidade .inv-resultado {
     font-size: 0.66rem;
   }
 
   #page-inverno-lotes .inv-analises-outros,
-  #page-inverno-pgw .inv-analises-outros {
+  #invb-servico-qualidade .inv-analises-outros {
     font-size: 0.66rem;
   }
 
@@ -2496,7 +2496,6 @@ html {
   <div class="tab" data-inv-aba="cultivares" onclick="showPageInverno('cultivares', this)">Por Cultivar</div>
   <div class="tab" data-inv-aba="lotes" onclick="showPageInverno('lotes', this)">Lotes Detalhados</div>
   <div class="tab" data-inv-aba="comprados" onclick="showPageInverno('comprados', this)">Lotes Comprados</div>
-  <div class="tab" data-inv-aba="pgw" onclick="showPageInverno('pgw', this)">PGW</div>
   <div class="tab" data-inv-aba="plantio" onclick="showPageInverno('plantio', this)">Nosso Plantio</div>
 </div>
 
@@ -2590,41 +2589,6 @@ html {
   </div>
 
   <!-- INVERNO: PGW (prestação de serviço — lotes de cliente, fora de todos os totais próprios) -->
-  <div class="page" id="page-inverno-pgw">
-    <div class="inv-aviso" style="background:#EFF6FF;border-color:#BFDBFE;color:#1E3A8A;">
-      <b>PGW · Prestação de serviço.</b> Lotes de cliente, beneficiados/analisados pela Sementes com Vigor.
-      Ficam fora dos totais da produção própria e de Lotes Comprados.
-      Os números do cabeçalho (Total KG, Lotes, Cultivares) são da <b>Produção própria</b>; os cartões abaixo mostram só a PGW.
-    </div>
-    <div id="inv-pgw-kpis" class="kpi-grid inv-kpi-grid" style="margin-bottom:12px;"></div>
-    <div class="filter-bar" style="margin-bottom:8px;">
-      <input type="text" id="inv-pgw-search" placeholder="🔍 Buscar lote ou cultivar..." oninput="filterInvernoServico()">
-      <select id="inv-pgw-cultura" onchange="filterInvernoServico()"><option value="">Todas as Culturas</option></select>
-      <select id="inv-pgw-status" onchange="filterInvernoServico()">
-        <option value="">Todos os Status</option><option value="Pendente">Pendente</option><option value="Aprovado">Aprovado</option><option value="Reprovado">Reprovado</option>
-      </select>
-      <div class="count-badge">Exibindo <span id="inv-pgw-count">—</span> lotes · <span id="inv-pgw-kg">—</span></div>
-    </div>
-    <div class="ld-sel-bar" role="toolbar" aria-label="Seleção de lotes da PGW para impressão">
-      <span class="ld-sel-txt" id="ldp-sel-txt" aria-live="polite">Nenhum lote selecionado</span>
-      <button class="ld-btn" type="button" id="ldp-sel-exibidos" onclick="ldSelServico.exibidos()">Selecionar exibidos</button>
-      <button class="ld-btn" type="button" id="ldp-sel-limpar" onclick="ldSelServico.limpar()" disabled>Limpar seleção</button>
-      <button class="ld-btn ld-btn-pri" type="button" id="ldp-sel-imprimir" onclick="ldSelServico.imprimir()" disabled>🖨️ Imprimir / Salvar PDF</button>
-    </div>
-    <div class="panel">
-      <div class="lotes-table-wrap">
-        <table>
-          <thead><tr>
-            <th class="ld-selcol" title="Selecionar lotes para impressão">✓</th>
-            <th>Lote</th><th>Cultivar</th><th>Cultura</th><th class="num">Bags</th><th class="num">kg do lote</th>
-            <th class="num">Germinação</th><th class="num">Vigor</th><th class="num">PMS (g)</th><th class="num">PH</th><th>Outras análises</th><th>Status</th><th class="col-hide-mobile">Categoria</th><th class="col-hide-mobile">Observação</th>
-          </tr></thead>
-          <tbody id="inv-pgw-tbody"></tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-
   <!-- INVERNO: LOTES COMPRADOS -->
   <div class="page" id="page-inverno-comprados">
     <div id="inverno-comprados-kpis" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;"></div>
@@ -2716,7 +2680,7 @@ html {
       </div>
       <div id="invb-filtro-empresa" style="display:none;margin:0 0 12px;">
         <label for="invb-empresa" style="font-weight:700;margin-right:8px;">Empresa:</label>
-        <select id="invb-empresa" onchange="filterInvernoBenef()" style="padding:8px 12px;border-radius:8px;">
+        <select id="invb-empresa" onchange="if (typeof ldSelServico !== 'undefined') ldSelServico.limpar(); filterInvernoBenef()" style="padding:8px 12px;border-radius:8px;">
           <option value="PGW">PGW</option>
           <option value="AMBEV">AMBEV</option>
         </select>
@@ -2740,6 +2704,37 @@ html {
 
       <!-- Lista expansível -->
       <div id="inv-benef-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+      <!-- Prestação de Serviço: resultados de Qualidade por empresa (antiga aba PGW).
+           Fonte: LOTS_SERVICO_INVERNO (planilha de análises). Somente leitura. -->
+      <section id="invb-servico-qualidade" style="display:none;margin-top:22px;" aria-labelledby="invb-sq-titulo">
+        <h2 id="invb-sq-titulo" style="font-size:1rem;font-weight:800;color:var(--texto);margin:0 0 4px;">Resultados de Qualidade · <span id="invb-sq-empresa">PGW</span></h2>
+        <div style="font-size:0.8rem;color:var(--texto2);margin-bottom:10px;">Todos os lotes da empresa na planilha de análises, beneficiados ou não. A busca e a cultura acima também filtram esta tabela.</div>
+        <div id="inv-pgw-kpis" class="kpi-grid inv-kpi-grid" style="margin-bottom:12px;"></div>
+        <div class="filter-bar" style="margin-bottom:8px;">
+          <select id="inv-pgw-status" onchange="filterInvernoServico()" aria-label="Status de qualidade">
+            <option value="">Todos os Status</option><option value="Pendente">Pendente</option><option value="Aprovado">Aprovado</option><option value="Reprovado">Reprovado</option>
+          </select>
+          <div class="count-badge">Exibindo <span id="inv-pgw-count">—</span> lotes · <span id="inv-pgw-kg">—</span></div>
+        </div>
+        <div class="ld-sel-bar" role="toolbar" aria-label="Seleção de lotes da prestação de serviço para impressão">
+          <span class="ld-sel-txt" id="ldp-sel-txt" aria-live="polite">Nenhum lote selecionado</span>
+          <button class="ld-btn" type="button" id="ldp-sel-exibidos" onclick="ldSelServico.exibidos()">Selecionar exibidos</button>
+          <button class="ld-btn" type="button" id="ldp-sel-limpar" onclick="ldSelServico.limpar()" disabled>Limpar seleção</button>
+          <button class="ld-btn ld-btn-pri" type="button" id="ldp-sel-imprimir" onclick="ldSelServico.imprimir()" disabled>🖨️ Imprimir / Salvar PDF</button>
+        </div>
+        <div class="panel">
+          <div class="lotes-table-wrap">
+            <table>
+              <thead><tr>
+                <th class="ld-selcol" title="Selecionar lotes para impressão">✓</th>
+                <th>Lote</th><th>Cultivar</th><th>Cultura</th><th class="num">Bags</th><th class="num">kg do lote</th>
+                <th class="num">Germinação</th><th class="num">Vigor</th><th class="num">PMS (g)</th><th class="num">PH</th><th>Outras análises</th><th>Status</th><th class="col-hide-mobile">Categoria</th><th class="col-hide-mobile">Observação</th>
+              </tr></thead>
+              <tbody id="inv-pgw-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
     </div>
   </div>
 
@@ -2951,6 +2946,8 @@ function atualizarRodapeSafra(safra) {
 }
 
 function showPageInverno(name, aba) {
+  // a antiga aba PGW agora fica em Beneficiamento › Prestação de Serviço
+  if (name === 'pgw') { invAbrirPrestacao('PGW'); return; }
   const root = document.getElementById('safra-inverno');
   root.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   root.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -2963,16 +2960,21 @@ function showPageInverno(name, aba) {
   if (name === 'comprados') buildInvernoComprados();
   if (name === 'plantio') buildInvernoPlantio();
   if (name === 'beneficiamento') buildInvernoBenef();
-  if (name === 'pgw') buildInvernoServico();
-  marcarHeaderProducaoPropria(name === 'pgw');
+  marcarHeaderProducaoPropria(name === 'beneficiamento' && invBenefVisao === 'pgw');
+}
+function invAbrirPrestacao(empresa) {
+  showPageInverno('beneficiamento');
+  const sel = document.getElementById('invb-empresa');
+  if (sel && empresa) sel.value = empresa;
+  invBenefTrocarVisao('pgw');
 }
 
-// Na aba PGW o cabeçalho continua mostrando só a produção própria: deixa isso escrito.
+// Na Prestação de Serviço o cabeçalho continua mostrando só a produção própria: deixa isso escrito.
 function marcarHeaderProducaoPropria(ligar) {
   const el = document.getElementById('h-kg-lbl');
   if (el) el.textContent = ligar ? 'KG · Produção própria' : 'Total KG';
   const stats = document.querySelector('.header-stats');
-  if (stats) stats.title = ligar ? 'Totais da produção própria do Inverno 26/26 — os lotes da PGW (prestação de serviço) não entram aqui.' : '';
+  if (stats) stats.title = ligar ? 'Totais da produção própria do Inverno 26/26 — os lotes de prestação de serviço (PGW, AMBEV) não entram aqui.' : '';
 }
 
 // -------- BENEFICIAMENTO (Inverno) --------
@@ -3024,8 +3026,11 @@ function invOrigemBenef(cultivar, cultura, d) {
   const lote = invNormTxt(d.lote);
   const proprio = idx.proprios.has(invChaveLote(cultura, d.lote));
   const proprioOutraCultura = !proprio && idx.proprioPorLote.has(lote);
-  const cand = idx.pgwPorLote[lote] || [];
-  const bate = cand.filter(p => p.cultura ? invNormTxt(p.cultura) === invNormTxt(cultura) : invNormTxt(p.cultivar) === invNormTxt(cultivar));
+  const candTodos = idx.pgwPorLote[lote] || [];
+  const bateCultura = p => p.cultura ? invNormTxt(p.cultura) === invNormTxt(cultura) : invNormTxt(p.cultivar) === invNormTxt(cultivar);
+  // regras antigas (vínculo pela aba PGW das análises): só registros da PGW
+  const cand = candTodos.filter(p => invServicoEmpresa(p) === 'PGW');
+  const bate = cand.filter(bateCultura);
   const reg = invNormTxt(d.origem || d.empresa || '');
   const regPgw = reg ? /PGW|PRESTA/.test(reg) : null;
   // A aba INVERNO 26-26 identifica a produção própria,
@@ -3059,10 +3064,14 @@ function invOrigemBenef(cultivar, cultura, d) {
         abasBenef.includes('INVERNO 26-26')) {
       return { origem: 'conferir', motivo: 'Produção própria e prestação de serviço no mesmo lote' };
     }
+    // resultado de Qualidade da mesma empresa, mesmo lote e mesma cultura (único)
+    const bateEmp = candTodos.filter(p => invServicoEmpresa(p) === empresaConfirmada && bateCultura(p));
+    const qual = bateEmp.length === 1 ? bateEmp[0] : null;
     return {
       origem: 'pgw',
       empresa: empresaConfirmada,
-      pgw: empresaConfirmada === 'PGW' && bate.length === 1 ? bate[0] : null
+      pgw: empresaConfirmada === 'PGW' ? qual : null,
+      qual
     };
   }
 
@@ -3079,7 +3088,7 @@ function invOrigemBenef(cultivar, cultura, d) {
   if (proprio && cand.length) return { origem: 'conferir', motivo: 'Código existe na produção própria e na aba PGW' };
   if (bate.length === 1) {
     if (regPgw === false) return { origem: 'conferir', motivo: 'Origem registrada (' + (d.origem || d.empresa) + ') diferente do vínculo com a PGW' };
-    return { origem: 'pgw', empresa: 'PGW', pgw: bate[0] };
+    return { origem: 'pgw', empresa: 'PGW', pgw: bate[0], qual: bate[0] };
   }
   if (bate.length > 1) return { origem: 'conferir', motivo: 'Lote aparece mais de uma vez na aba PGW' };
   if (cand.length) return { origem: 'conferir', motivo: 'Lote está na aba PGW com ' + (cand[0].cultura ? 'cultura' : 'cultivar') + ' diferente (' + (cand[0].cultura || cand[0].cultivar || '—') + ')' };
@@ -3104,7 +3113,7 @@ function invBenefLinhas() {
 }
 // linhas do Beneficiamento vinculadas a um lote da PGW (para a Central de Lotes)
 function invBenefDoLotePgw(lp) {
-  return invBenefLinhas().filter(x => x.origem === 'pgw' && x.pgw === lp).map(x => x.d);
+  return invBenefLinhas().filter(x => x.origem === 'pgw' && (x.qual === lp || x.pgw === lp)).map(x => x.d);
 }
 // cultura/categoria de um lote PGW em cada fonte (aba PGW × Beneficiamento) — só exibição, nada é sobrescrito
 function invPgwFontes(lp) {
@@ -3126,6 +3135,8 @@ function invBenefTrocarVisao(v) {
   document.getElementById('invb-visao-aviso').style.display = v === 'pgw' ? '' : 'none';
   document.getElementById('invb-filtro-empresa').style.display =
     v === 'pgw' ? '' : 'none';
+  document.getElementById('invb-servico-qualidade').style.display = v === 'pgw' ? '' : 'none';
+  marcarHeaderProducaoPropria(v === 'pgw');
   filterInvernoBenef();
 }
 function renderInvBenefConferir(linhas) {
@@ -3150,11 +3161,12 @@ function renderInvBenefConferir(linhas) {
 
 function buildInvernoBenef() {
   const dados = Array.isArray(BENEF_INVERNO) ? BENEF_INVERNO : [];
+  const temServico = invServico().length > 0;
   document.getElementById('inv-benef-vazio').style.display = dados.length ? 'none' : 'block';
-  document.getElementById('inv-benef-conteudo').style.display = dados.length ? '' : 'none';
-  if (!dados.length || invBenefBuilt) { if (dados.length) filterInvernoBenef(); return; }
+  document.getElementById('inv-benef-conteudo').style.display = (dados.length || temServico) ? '' : 'none';
+  if (!(dados.length || temServico) || invBenefBuilt) { if (dados.length || temServico) filterInvernoBenef(); return; }
   invBenefBuilt = true;
-  const culturas = [...new Set(dados.map(invBenefCultura))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const culturas = [...new Set(dados.map(invBenefCultura).concat(invServico().map(invServicoCulturaTxt)))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   const locais = [...new Set(dados.flatMap(c => c.localizacoes || []))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   document.getElementById('inv-benef-cultura').innerHTML = '<option value="">Todas as culturas</option>' +
     culturas.map(c => `<option value="${invBenefEsc(c)}">${invBenefEsc(c)}</option>`).join('');
@@ -3201,6 +3213,9 @@ function filterInvernoBenef() {
     op.textContent = op.value + ' · ' + nl + ' lotes · ' + invBenefFmtKg(ls.reduce((s, x) => s + (x.d.kg || 0), 0));
   });
   renderInvBenefConferir(todas.filter(x => x.origem === 'conferir' && passa(x)));
+  if (invBenefVisao === 'pgw') filterInvernoServico();
+  // resultado de Qualidade vinculado a cada linha do Beneficiamento (só leitura)
+  const qualDe = new Map(todas.map(x => [x.d, x.qual || null]));
   const daVisao = new Set(todas.filter(x =>
     x.origem === invBenefVisao &&
     (invBenefVisao !== 'pgw' ||
@@ -3265,6 +3280,34 @@ function filterInvernoBenef() {
       <div style="font-size:0.6rem;color:var(--texto2);text-transform:uppercase;letter-spacing:0.5px;">${rot}</div>
       <div style="font-size:0.9rem;font-weight:800;color:var(--texto);">${val}</div></div>`;
 
+  // Prestação de Serviço: resultados de Qualidade do registro vinculado (mesma empresa, lote e cultura)
+  const comQual = invBenefVisao === 'pgw';
+  const semQual = '<span style="color:var(--texto2);">sem análise vinculada</span>';
+  const qualCelulas = d => {
+    const r = qualDe.get(d);
+    if (!r) return `<td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td>${semQual}</td><td>—</td>`;
+    return `<td class="num" style="color:${r.germinacao != null ? '#15803D' : 'var(--texto2)'};font-weight:700;">${r.germinacao != null ? invBenefEsc(r.germinacao) + '%' : 'aguardando'}</td>
+        <td class="num">${invAnaliseCelula(r, 'vigor')}</td><td class="num">${invAnaliseCelula(r, 'pms')}</td><td class="num">${invAnaliseCelula(r, 'ph')}</td>
+        <td class="obs">${invAnalisesOutras(r)}</td><td>${invSelo(r)}</td>`;
+  };
+  const qualObs = d => {
+    const r = qualDe.get(d); if (!r) return '';
+    const extra = [];
+    if (r.categoria && invNormTxt(r.categoria) !== invNormTxt(d.categoria)) extra.push('⚠ Categoria na análise: ' + invBenefEsc(r.categoria));
+    if (r.observacao) extra.push('Análise: ' + invBenefEsc(r.observacao));
+    if (r.pendencia) extra.push('⚠ ' + invBenefEsc(r.pendencia));
+    return extra.length ? '<div style="color:var(--texto2);font-size:0.72rem;margin-top:2px;">' + extra.join('<br>') + '</div>' : '';
+  };
+  const qualCard = d => {
+    const r = qualDe.get(d);
+    if (!r) return `<div class="lin"><span>Qualidade</span><span>sem análise vinculada</span></div>`;
+    const v = t => { const it = invAnaliseSelecionar(r, t); return it ? invBenefEsc(invAnaliseFormatar(it[1])) : '—'; };
+    return `<div class="lin"><span>Germ. <b>${r.germinacao != null ? invBenefEsc(r.germinacao) + '%' : 'aguardando'}</b> · Vigor <b>${v('vigor')}</b></span>${invSelo(r)}</div>
+        <div class="lin"><span>PMS <b>${v('pms')}</b> · PH <b>${v('ph')}</b></span></div>
+        ${invAnalisesOutras(r) !== '—' ? `<div class="lin" style="display:block;">${invAnalisesOutras(r)}</div>` : ''}
+        ${qualObs(d)}`;
+  };
+
   document.getElementById('inv-benef-list').innerHTML = lista.map((c, i) => {
     const cor = CULTURAS_INVERNO_COLORS[c.cultura] || '#64748B';
     const linhas = c.detail.map(d => `
@@ -3277,7 +3320,8 @@ function filterInvernoBenef() {
         <td class="num">${d.peso_bag != null ? d.peso_bag.toLocaleString('pt-BR') + ' kg' : '—'}</td>
         <td class="num">${(d.kg || 0).toLocaleString('pt-BR')}</td>
         <td>${invBenefEsc(d.localizacao) || '—'}</td>
-        <td class="obs">${invBenefEsc(d.observacoes) || ''}</td>
+        ${comQual ? qualCelulas(d) : ''}
+        <td class="obs">${invBenefEsc(d.observacoes) || ''}${comQual ? qualObs(d) : ''}</td>
       </tr>`).join('');
     const cards = c.detail.map(d => `
       <div class="invb-lote-card">
@@ -3288,6 +3332,7 @@ function filterInvernoBenef() {
         <div class="lin"><span>${invBenefEsc(d.embalagem) || '—'} · ${d.peso_bag != null ? d.peso_bag.toLocaleString('pt-BR') + ' kg/bag' : '—'}</span><b>${(d.bags || 0).toLocaleString('pt-BR')} bags</b></div>
         <div class="lin"><span>${invBenefEsc(d.localizacao) || '—'}</span><b>${(d.kg || 0).toLocaleString('pt-BR')} kg</b></div>
         ${d.observacoes ? `<div class="lin"><span>Obs.: ${invBenefEsc(d.observacoes)}</span></div>` : ''}
+        ${comQual ? qualCard(d) : ''}
       </div>`).join('');
 
     return `
@@ -3317,9 +3362,9 @@ function filterInvernoBenef() {
         </div>
         <div class="invb-tabela-wrap" style="overflow-x:auto;background:#fff;border:1px solid var(--borda);border-radius:8px;">
           <table class="invb-tabela">
-            <thead><tr><th>Categoria</th><th>Lote</th><th>Peneira</th><th>Embalagem</th><th class="num">Nº BB</th><th class="num">Peso/bag</th><th class="num">Total kg</th><th>Localização</th><th>Observações</th></tr></thead>
+            <thead><tr><th>Categoria</th><th>Lote</th><th>Peneira</th><th>Embalagem</th><th class="num">Nº BB</th><th class="num">Peso/bag</th><th class="num">Total kg</th><th>Localização</th>${comQual ? '<th class="num">Germinação</th><th class="num">Vigor</th><th class="num">PMS (g)</th><th class="num">PH</th><th>Outras análises</th><th>Status</th>' : ''}<th>Observações</th></tr></thead>
             <tbody>${linhas}</tbody>
-            <tfoot><tr><td colspan="4">Total</td><td class="num">${c.bags.toLocaleString('pt-BR')}</td><td></td><td class="num">${c.kg.toLocaleString('pt-BR')}</td><td colspan="2"></td></tr></tfoot>
+            <tfoot><tr><td colspan="4">Total</td><td class="num">${c.bags.toLocaleString('pt-BR')}</td><td></td><td class="num">${c.kg.toLocaleString('pt-BR')}</td><td colspan="${comQual ? 8 : 2}"></td></tr></tfoot>
           </table>
         </div>
         <div class="invb-lotes-cards">${cards}</div>
@@ -3417,40 +3462,43 @@ function invServico() {
 }
 let filteredInvernoServico = [];
 function invServicoCulturaTxt(l) { return l.cultura || 'Cultura a confirmar'; }
-function buildInvernoServico() {
-  const dados = invServico();
-  const sel = document.getElementById('inv-pgw-cultura');
-  const atual = sel.value;
-  const culturas = [...new Set(dados.map(invServicoCulturaTxt))].sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  sel.innerHTML = '<option value="">Todas as Culturas</option>' + culturas.map(c => `<option value="${invBenefEsc(c)}">${invBenefEsc(c)}</option>`).join('');
-  if (culturas.includes(atual)) sel.value = atual;
-  filterInvernoServico();
-}
+// empresa do registro de qualidade: registros gravados antes do campo empresa são da aba PGW
+function invServicoEmpresa(l) { const e = invNormTxt(l && l.empresa || ''); return e || 'PGW'; }
+function buildInvernoServico() { filterInvernoServico(); }
+// empresa escolhida no Beneficiamento › Prestação de Serviço
+function invServicoEmpresaSel() { const el = document.getElementById('invb-empresa'); return (el && el.value) || 'PGW'; }
 function filterInvernoServico() {
-  const dados = invServico();
-  const q = (document.getElementById('inv-pgw-search').value || '').toLowerCase().trim();
-  const cult = document.getElementById('inv-pgw-cultura').value;
+  const emp = invServicoEmpresaSel();
+  const dados = invServico().filter(l => invServicoEmpresa(l) === emp);
+  // mesma busca e mesma cultura do Beneficiamento; o status é só desta tabela
+  const q = (document.getElementById('inv-benef-search').value || '').toLowerCase().trim();
+  const cult = document.getElementById('inv-benef-cultura').value;
   const st = document.getElementById('inv-pgw-status').value;
   filteredInvernoServico = dados.filter(l =>
     (!cult || invServicoCulturaTxt(l) === cult) &&
     (!st || invStatusTxt(l) === st) &&
-    (!q || String(l.lote || '').toLowerCase().includes(q) || String(l.cultivar || '').toLowerCase().includes(q)));
+    (!q || String(l.lote || '').toLowerCase().includes(q) || String(l.cultivar || '').toLowerCase().includes(q) || invServicoCulturaTxt(l).toLowerCase().includes(q)));
   const lista = filteredInvernoServico;
   const kg = lista.reduce((s, l) => s + (Number(l.kg) || 0), 0);
   const bags = lista.reduce((s, l) => s + (Number(l.bags) || 0), 0);
   const pend = lista.filter(l => !l.status).length;
   const conferir = lista.filter(l => l.pendencia).length;
+  const aprov = lista.filter(l => l.status === 'Aprovado').length;
+  const repr = lista.filter(l => l.status === 'Reprovado').length;
+  document.getElementById('invb-sq-empresa').textContent = emp;
   document.getElementById('inv-pgw-count').textContent = lista.length;
   document.getElementById('inv-pgw-kg').textContent = invFmtT(kg) + ' (' + kg.toLocaleString('pt-BR') + ' kg)';
   const filtro = (q || cult || st) ? ' · filtrado' : '';
+  const e0 = invBenefEsc;
   document.getElementById('inv-pgw-kpis').innerHTML = `
-    <div class="kpi"><div class="label">Lotes PGW</div><div class="value">${lista.length}</div><div class="sub">${bags.toLocaleString('pt-BR')} bags${filtro}</div></div>
-    <div class="kpi"><div class="label">Volume PGW</div><div class="value">${invFmtT(kg)}</div><div class="sub">${kg.toLocaleString('pt-BR')} kg · fora dos totais próprios</div></div>
+    <div class="kpi"><div class="label">Lotes ${e0(emp)}</div><div class="value">${lista.length}</div><div class="sub">${bags.toLocaleString('pt-BR')} bags${filtro}</div></div>
+    <div class="kpi"><div class="label">Volume ${e0(emp)}</div><div class="value">${invFmtT(kg)}</div><div class="sub">${kg.toLocaleString('pt-BR')} kg · fora dos totais próprios</div></div>
+    <div class="kpi"><div class="label">Aprovados / Reprovados</div><div class="value">${aprov} / ${repr}</div><div class="sub">pela germinação mínima do Inverno</div></div>
     <div class="kpi ${conferir ? 'danger alerta' : 'warn pend'}"><div class="label">${conferir ? 'Para conferência' : 'Pendentes de análise'}</div><div class="value">${conferir || pend}</div><div class="sub">${conferir ? 'cultura ou peso a confirmar (veja a linha)' : 'aguardando germinação'}</div></div>`;
   const _sel = typeof ldSelServico !== 'undefined' ? ldSelServico : null;
   if (_sel) setTimeout(() => _sel.barra(), 0);
   const tb = document.getElementById('inv-pgw-tbody');
-  if (!dados.length) { tb.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:32px;color:var(--texto2);">Nenhum lote da PGW registrado ainda.</td></tr>'; return; }
+  if (!dados.length) { tb.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:32px;color:var(--texto2);">Nenhum resultado de qualidade da ' + invBenefEsc(emp) + ' registrado ainda.</td></tr>'; return; }
   if (!lista.length) { tb.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:32px;color:var(--texto2);">Nenhum lote encontrado com os filtros selecionados.</td></tr>'; return; }
   const e = invBenefEsc;
   tb.innerHTML = lista.map(l => `
@@ -3777,7 +3825,7 @@ function buildInvernoCultivares() {
       ${vazias.filter(v => benefPorCv[v.cultivar] && !cvServico.has(v.cultivar)).map(v => `<div class="inv-aviso" style="margin:0 16px 12px;background:#FEF2F2;border-color:#FECACA;color:#7F1D1D;"><b>${escV(v.cultivar)}</b> tem ${benefPorCv[v.cultivar]} lote${benefPorCv[v.cultivar] === 1 ? '' : 's'} no Beneficiamento e nenhum na Qualidade.</div>`).join('')}
       <div class="chips">${vazias.map(v => `<span class="chip"><b>${escV(v.cultivar)}</b> <small>· ${escV(v.cultura)}</small></span>`).join('')}</div>
     </details>` : '';
-    if (soServico.length) vzEl.innerHTML += `<div class="inv-aviso" style="margin-top:10px;background:#EFF6FF;border-color:#BFDBFE;color:#1E3A8A;">${soServico.map(v => '<b>' + escV(v.cultivar) + '</b>').join(', ')}: só lotes de prestação de serviço nesta safra — <a href="#" onclick="event.preventDefault();showPageInverno('pgw')">ver aba PGW</a>.</div>`;
+    if (soServico.length) vzEl.innerHTML += `<div class="inv-aviso" style="margin-top:10px;background:#EFF6FF;border-color:#BFDBFE;color:#1E3A8A;">${soServico.map(v => '<b>' + escV(v.cultivar) + '</b>').join(', ')}: só lotes de prestação de serviço nesta safra — <a href="#" onclick="event.preventDefault();invAbrirPrestacao()">ver Prestação de Serviço</a>.</div>`;
   }
 
   document.getElementById('inverno-cv-count').textContent = linhas.length + ' com lotes · ' + (linhas.length + vazias.length);
@@ -6925,36 +6973,54 @@ const ldSelInverno = ldCriarSelecao({
   titulo: 'SEEDMAX — Relatório de Qualidade de Lotes',
   resumo: ldResumoInverno, pagina: ldPaginaInverno
 });
-// ---------- prestação de serviço (aba PGW): relatório próprio, nunca misturado com a produção ----------
+// ---------- prestação de serviço: relatório próprio por empresa, nunca misturado com a produção ----------
+function ldServAnalise(l, tipo) { const it = invAnaliseSelecionar(l, tipo); return it ? ldEsc(invAnaliseFormatar(it[1])) : '—'; }
 function ldResumoServico(lotes) {
-  return '<table class="ldp-lista"><thead><tr><th>Lote</th><th>Empresa</th><th>Cultura</th><th>Cultivar</th><th class="n">Germinação</th><th>Status</th><th class="n">Bags</th><th class="n">kg do lote</th></tr></thead><tbody>' +
-    lotes.map(l => '<tr><td><b>' + ldVal(l.lote) + '</b></td><td>' + ldVal(l.empresa) + '</td><td>' + ldVal(l.cultura || 'a confirmar') + '</td><td>' + ldVal(l.cultivar) + '</td>' +
-      '<td class="n">' + (l.germinacao != null ? ldEsc(l.germinacao) + '%' : '—') + '</td><td>' + ldEsc(invStatusTxt(l)) + '</td>' +
+  return '<table class="ldp-lista"><thead><tr><th>Lote</th><th>Empresa</th><th>Cultura</th><th>Cultivar</th><th class="n">Germinação</th><th class="n">Vigor</th><th class="n">PMS</th><th class="n">PH</th><th>Status</th><th class="n">Bags</th><th class="n">kg do lote</th></tr></thead><tbody>' +
+    lotes.map(l => '<tr><td><b>' + ldVal(l.lote) + '</b></td><td>' + ldEsc(invServicoEmpresa(l)) + '</td><td>' + ldVal(l.cultura || 'a confirmar') + '</td><td>' + ldVal(l.cultivar) + '</td>' +
+      '<td class="n">' + (l.germinacao != null ? ldEsc(l.germinacao) + '%' : '—') + '</td><td class="n">' + ldServAnalise(l, 'vigor') + '</td><td class="n">' + ldServAnalise(l, 'pms') + '</td><td class="n">' + ldServAnalise(l, 'ph') + '</td>' +
+      '<td>' + ldEsc(invStatusTxt(l)) + '</td>' +
       '<td class="n">' + (l.bags != null ? ldNum(l.bags, 0) : '—') + '</td><td class="n">' + (l.kg != null ? ldNum(l.kg, 0) : '—') + '</td></tr>').join('') +
     '</tbody></table>';
 }
 function ldPaginaServico(l, i, total) {
+  const emp = invServicoEmpresa(l);
   const st = l.status ? '<span class="ldp-st ' + (l.status === 'Aprovado' ? 'ok' : 'no') + '">' + ldEsc(l.status) + '</span>' : 'Pendente';
-  return '<div class="ldp-lote-head"><div><div class="ldp-eti">Lote · ' + ldVal(l.empresa) + ' (' + ldVal(l.origem) + ')</div><h2>' + ldVal(l.lote) + '</h2>' +
+  const destacadas = new Set(['vigor', 'pms', 'ph'].map(t => invAnaliseSelecionar(l, t)).filter(Boolean).map(a => a[0]));
+  const outras = invAnaliseCampos(l).filter(([nome]) => !destacadas.has(nome) && !/GERMIN/.test(invAnaliseNormalizar(nome)));
+  const benef = typeof invBenefDoLotePgw === 'function' ? invBenefDoLotePgw(l) : [];
+  const bBags = benef.reduce((s, d) => s + (d.bags || 0), 0), bKg = benef.reduce((s, d) => s + (d.kg || 0), 0);
+  const uniq = c => [...new Set(benef.map(d => d[c]).filter(Boolean))].map(ldEsc).join(', ');
+  return '<div class="ldp-lote-head"><div><div class="ldp-eti">Lote · ' + ldEsc(emp) + ' (' + ldVal(l.origem || 'Prestação de serviço') + ')</div><h2>' + ldVal(l.lote) + '</h2>' +
       '<div class="ldp-sub">' + ldVal(l.cultura || 'Cultura a confirmar') + ' · ' + ldVal(l.cultivar) + '</div></div>' +
       '<div class="ldp-lote-st">' + st + '<div class="ldp-lote-n">' + i + ' de ' + total + '</div></div></div>' +
     '<div class="ldp-sec"><h3>Identificação</h3><div class="ldp-kv">' +
-      ldKv('Empresa', ldVal(l.empresa)) + ldKv('Origem', ldVal(l.origem)) + ldKv('Lote', '<span class="ldp-mono">' + ldVal(l.lote) + '</span>') +
-      ldKv('Cultura', ldVal(l.cultura || 'a confirmar')) + ldKv('Cultivar', ldVal(l.cultivar)) + ldKv('Categoria', ldVal(l.categoria)) + '</div></div>' +
+      ldKv('Empresa', ldEsc(emp)) + ldKv('Origem', ldVal(l.origem || 'Prestação de serviço')) + ldKv('Lote', '<span class="ldp-mono">' + ldVal(l.lote) + '</span>') +
+      ldKv('Cultura', ldVal(l.cultura || 'a confirmar')) + ldKv('Cultivar', ldVal(l.cultivar)) + ldKv('Categoria', ldVal(l.categoria)) +
+      ldKv('Data', ldVal(l.data)) + ldKv('Embalagem', ldVal(l.embalagem)) + '</div></div>' +
     '<div class="ldp-sec"><h3>KG / quantidade</h3><div class="ldp-kv">' + ldKv('Bags', l.bags != null ? ldNum(l.bags, 0) : '—') +
       ldKv('kg do lote', l.kg != null ? ldNum(l.kg, 0) + ' kg' : '—') + (l.pendencia ? ldKv('Conferir', ldEsc(l.pendencia)) : '') + '</div></div>' +
     '<div class="ldp-sec"><h3>Resultados de Qualidade</h3><table class="ldp-res"><thead><tr><th>Análise</th><th class="n">Resultado</th></tr></thead><tbody>' +
       '<tr><td>Germinação</td><td class="n"><b>' + (l.germinacao != null ? ldEsc(l.germinacao) + '%' : '—') + '</b></td></tr>' +
-      '<tr><td>Status</td><td class="n">' + st + '</td></tr></tbody></table></div>';
+      '<tr><td>Vigor</td><td class="n"><b>' + ldServAnalise(l, 'vigor') + '</b></td></tr>' +
+      '<tr><td>PMS (g)</td><td class="n"><b>' + ldServAnalise(l, 'pms') + '</b></td></tr>' +
+      '<tr><td>PH</td><td class="n"><b>' + ldServAnalise(l, 'ph') + '</b></td></tr>' +
+      outras.map(([nome, valor]) => '<tr><td>' + ldEsc(nome) + '</td><td class="n"><b>' + ldEsc(invAnaliseFormatar(valor)) + '</b></td></tr>').join('') +
+      '<tr><td>Status</td><td class="n">' + st + '</td></tr>' +
+      '<tr><td>Observação</td><td class="n">' + ldVal(l.observacao) + '</td></tr></tbody></table></div>' +
+    '<div class="ldp-sec"><h3>Beneficiamento</h3>' + (benef.length
+      ? '<div class="ldp-kv">' + ldKv('Bags beneficiadas', ldNum(bBags, 0)) + ldKv('kg beneficiados', ldNum(bKg, 0) + ' kg') + ldKv('Embalagem', uniq('embalagem')) + ldKv('Localização', uniq('localizacao')) + '</div>'
+      : '<div class="ldp-vazio">Nenhuma linha do Beneficiamento vinculada a este lote.</div>') + '</div>';
 }
 const ldSelServico = ldCriarSelecao({
   tbody: 'inv-pgw-tbody',
   ids: { txt: 'ldp-sel-txt', exibidos: 'ldp-sel-exibidos', limpar: 'ldp-sel-limpar', imprimir: 'ldp-sel-imprimir' },
-  chave: l => 'S:' + (l.empresa || '') + '|' + ldCulturaChave(l.cultura) + '|' + (l.lote || ''),
+  chave: l => 'S:' + invServicoEmpresa(l) + '|' + ldCulturaChave(l.cultura) + '|' + (l.lote || ''),
   lista: () => (typeof filteredInvernoServico !== 'undefined' ? filteredInvernoServico : []),
-  todos: () => invServico(),
-  titulo: 'SEEDMAX — Lotes de Prestação de Serviço (PGW)',
-  origem: 'PGW · Prestação de serviço',
+  // o PDF é sempre de uma empresa só: a da Prestação de Serviço em uso
+  todos: () => invServico().filter(l => invServicoEmpresa(l) === invServicoEmpresaSel()),
+  get titulo() { return 'SEEDMAX — Lotes de Prestação de Serviço (' + invServicoEmpresaSel() + ')'; },
+  get origem() { return invServicoEmpresaSel() + ' · Prestação de serviço'; },
   resumo: ldResumoServico, pagina: ldPaginaServico
 });
 // as tabelas podem ter sido desenhadas antes deste bloco rodar: redesenha para mostrar as caixinhas
@@ -7397,7 +7463,7 @@ document.getElementById('central-cv-tbody').addEventListener('click', ev => {
 let centralPgwLista = [];
 function centralPgwDados() {
   return (typeof invServico === 'function' ? invServico() : []).map(l => {
-    if (!l._buscaPgw) Object.defineProperty(l, '_buscaPgw', { value: cNorm([l.lote, l.cultivar, l.cultura, l.empresa, l.origem, 'PGW PRESTACAO DE SERVICO INV2626'].join(' | ')), enumerable: false, configurable: true });
+    if (!l._buscaPgw) Object.defineProperty(l, '_buscaPgw', { value: cNorm([l.lote, l.cultivar, l.cultura, l.empresa, l.origem, 'PRESTACAO DE SERVICO INV2626', invServicoEmpresa(l)].join(' | ')), enumerable: false, configurable: true });
     return l;
   });
 }
@@ -7422,7 +7488,7 @@ function renderCentralPgw() {
     const benef = invBenefDoLotePgw(l);
     const bkg = benef.reduce((s, d) => s + (d.kg || 0), 0);
     return '<tr class="cl-row" data-pgw="' + i + '" style="cursor:pointer;">' +
-      '<td style="font-weight:700;">' + cEsc(l.lote) + ' <span class="rank-badge" style="background:#EFF6FF;color:#1E3A8A;border:1px solid #BFDBFE;">PGW · Prestação de serviço</span></td>' +
+      '<td style="font-weight:700;">' + cEsc(l.lote) + ' <span class="rank-badge" style="background:#EFF6FF;color:#1E3A8A;border:1px solid #BFDBFE;">' + cEsc(invServicoEmpresa(l)) + ' · Prestação de serviço</span></td>' +
       '<td>' + cEsc(l.empresa || 'PGW') + '</td><td>' + cEsc(l.origem || 'Prestação de serviço') + '</td>' +
       '<td>' + (l.cultura ? cEsc(l.cultura) : '<span class="inv-selo pend">a confirmar</span>') + '</td><td>' + cEsc(l.cultivar || '—') + '</td>' +
       '<td class="num">' + (l.bags != null ? cNum(l.bags, 0) : '—') + '</td><td class="num">' + (l.kg != null ? cNum(l.kg, 0) : '—') + '</td>' +
@@ -7445,13 +7511,13 @@ function abrirLotePgwCentral(l) {
       ((l.kg != null && Math.abs(bKg - l.kg) > 0.5) ? '<div class="cl-al cl-al-A" style="margin-top:8px;"><b>AVISO</b> · kg do Beneficiamento (' + cNum(bKg, 0) + ') diferente do kg da aba PGW (' + cNum(l.kg, 0) + ').</div>' : '')
     : '<div style="color:var(--texto2);font-size:0.85rem;">Nenhuma linha do Beneficiamento vinculada a este lote (ou a origem está em conferência no Beneficiamento).</div>';
   const fontes = invPgwFontes(l);
-  const porFonte = (f, nomeVazio) => cEsc(f.qualidade || nomeVazio) + ' <small style="color:var(--texto2);">(aba PGW)</small>' +
+  const porFonte = (f, nomeVazio) => cEsc(f.qualidade || nomeVazio) + ' <small style="color:var(--texto2);">(aba ' + cEsc(invServicoEmpresa(l)) + ')</small>' +
     (f.benef.length ? '<br>' + cEsc(f.benef.join(', ')) + ' <small style="color:var(--texto2);">(Beneficiamento)</small>' : '');
   const avisosFonte = [['Cultura', fontes.cultura], ['Categoria', fontes.categoria]].filter(([, f]) => f.diverge)
     .map(([nome, f]) => '<div class="cl-al cl-al-A" style="margin-top:8px;"><b>DIVERGÊNCIA</b> · ' + nome + ': aba PGW <b>' + cEsc(f.qualidade) + '</b> × Beneficiamento <b>' + cEsc(f.benef.join(', ')) +
       '</b>. Os dois registros foram mantidos como estão — conferir na origem.</div>').join('');
   document.getElementById('cl-box').innerHTML =
-    '<div class="cl-head"><div style="min-width:0;"><div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:.6px;color:var(--texto2);font-weight:700;">Lote · PGW · Prestação de serviço</div>' +
+    '<div class="cl-head"><div style="min-width:0;"><div style="font-size:0.68rem;text-transform:uppercase;letter-spacing:.6px;color:var(--texto2);font-weight:700;">Lote · ' + cEsc(invServicoEmpresa(l)) + ' · Prestação de serviço</div>' +
       '<h2 id="cl-titulo">' + cEsc(l.lote) + '</h2><div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">' + invSelo(l) +
       '<span class="cl-mono" style="color:var(--texto2);">Inverno 26/26 · fora dos totais da produção própria</span></div></div>' +
       '<button class="cl-x" type="button" onclick="fecharLoteCentral()" aria-label="Fechar">✕</button></div>' +
