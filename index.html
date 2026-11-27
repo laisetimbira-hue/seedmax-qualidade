@@ -3042,6 +3042,20 @@ function invOrigemBenef(cultivar, cultura, d) {
   const bate = cand.filter(p => p.cultura ? invNormTxt(p.cultura) === invNormTxt(cultura) : invNormTxt(p.cultivar) === invNormTxt(cultivar));
   const reg = invNormTxt(d.origem || d.empresa || '');
   const regPgw = reg ? /PGW|PRESTA/.test(reg) : null;
+  // A aba INVERNO 26-26 identifica a produção própria,
+  // independentemente da existência de análise de Qualidade.
+  const abasBenef = Array.isArray(d.linhas)
+    ? d.linhas.map(x => invNormTxt(x.aba || ''))
+    : [];
+  const abaPropria = abasBenef.includes('INVERNO 26-26');
+  const abaServico = abasBenef.some(x => x.includes('PGW') || x.includes('PRESTA'));
+
+  if (abaPropria) {
+    if (abaServico || regPgw === true)
+      return { origem: 'conferir', motivo: 'Origens conflitantes no Beneficiamento' };
+    return { origem: 'propria', semAnalise: !proprio };
+  }
+
   if (proprio && cand.length) return { origem: 'conferir', motivo: 'Código existe na produção própria e na aba PGW' };
   if (bate.length === 1) {
     if (regPgw === false) return { origem: 'conferir', motivo: 'Origem registrada (' + (d.origem || d.empresa) + ') diferente do vínculo com a PGW' };
@@ -3054,7 +3068,7 @@ function invOrigemBenef(cultivar, cultura, d) {
     return { origem: 'propria' };
   }
   if (proprioOutraCultura) return { origem: 'conferir', motivo: 'Lote existe na produção própria com outra cultura' };
-  return { origem: 'conferir', motivo: 'Sem análise registrada (nem na produção própria nem na aba PGW)' };
+  return { origem: 'conferir', motivo: 'Origem sem vínculo confirmado' };
 }
 // todas as linhas do Beneficiamento já classificadas (cache por carga de dados)
 let _invBenefLinhas = null;
