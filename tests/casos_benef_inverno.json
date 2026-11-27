@@ -601,5 +601,250 @@
    "kg": 14400,
    "conflitos": []
   }
+ },
+ {
+  "nome": "prestação de serviço: própria, PGW e AMBEV separadas pela aba",
+  "culturas": {
+   "CVA": {
+    "cultura": "Aveia Branca"
+   },
+   "CVT": {
+    "cultura": "Trigo"
+   }
+  },
+  "linhas": [
+   {
+    "aba": "INVERNO 2026",
+    "linha": 3,
+    "cultivar": "CVA",
+    "cultura_planilha": null,
+    "data": null,
+    "safra": "26/26",
+    "categoria": "S2",
+    "lote": "PR01",
+    "peneira": "S/P",
+    "embalagem": "BB600",
+    "bags": 20,
+    "peso_bag": 600,
+    "total_kg": 12000,
+    "localizacao": "UBS X",
+    "observacoes": null
+   },
+   {
+    "aba": "PGW",
+    "linha": 3,
+    "cultivar": "CVA",
+    "cultura_planilha": null,
+    "data": null,
+    "safra": "26/26",
+    "categoria": "S2",
+    "lote": "PG01",
+    "peneira": "S/P",
+    "embalagem": "BB600",
+    "bags": 10,
+    "peso_bag": 600,
+    "total_kg": 6000,
+    "localizacao": "UBS X",
+    "observacoes": null
+   },
+   {
+    "aba": "AMBEV",
+    "linha": 3,
+    "cultivar": "CVT",
+    "cultura_planilha": null,
+    "data": null,
+    "safra": "26/26",
+    "categoria": "S2",
+    "lote": "AM01",
+    "peneira": "S/P",
+    "embalagem": "BB600",
+    "bags": 5,
+    "peso_bag": 600,
+    "total_kg": 3000,
+    "localizacao": "UBS X",
+    "observacoes": null
+   }
+  ],
+  "espera": {
+   "lotIds": [
+    "INV2626_AVEIA_BRANCA_PR01",
+    "INV2626_AVEIA_BRANCA_PG01",
+    "INV2626_TRIGO_AM01"
+   ],
+   "bags": 35,
+   "kg": 21000,
+   "conflitos": [],
+   "empresas": {
+    "INV2626_AVEIA_BRANCA_PR01": null,
+    "INV2626_AVEIA_BRANCA_PG01": "PGW",
+    "INV2626_TRIGO_AM01": "AMBEV"
+   }
+  }
+ },
+ {
+  "nome": "prestação de serviço: nome da aba com espaços e minúsculas",
+  "culturas": {
+   "CVA": {
+    "cultura": "Aveia Branca"
+   },
+   "CVT": {
+    "cultura": "Trigo"
+   }
+  },
+  "linhas": [
+   {
+    "aba": " pgw ",
+    "linha": 3,
+    "cultivar": "CVA",
+    "cultura_planilha": null,
+    "data": null,
+    "safra": "26/26",
+    "categoria": "S2",
+    "lote": "PG02",
+    "peneira": "S/P",
+    "embalagem": "BB600",
+    "bags": 20,
+    "peso_bag": 600,
+    "total_kg": 12000,
+    "localizacao": "UBS X",
+    "observacoes": null
+   },
+   {
+    "aba": "Ambev",
+    "linha": 4,
+    "cultivar": "CVA",
+    "cultura_planilha": null,
+    "data": null,
+    "safra": "26/26",
+    "categoria": "S2",
+    "lote": "AM02",
+    "peneira": "S/P",
+    "embalagem": "BB600",
+    "bags": 20,
+    "peso_bag": 600,
+    "total_kg": 12000,
+    "localizacao": "UBS X",
+    "observacoes": null
+   }
+  ],
+  "espera": {
+   "lotIds": [
+    "INV2626_AVEIA_BRANCA_PG02",
+    "INV2626_AVEIA_BRANCA_AM02"
+   ],
+   "bags": 40,
+   "kg": 24000,
+   "conflitos": [],
+   "empresas": {
+    "INV2626_AVEIA_BRANCA_PG02": "PGW",
+    "INV2626_AVEIA_BRANCA_AM02": "AMBEV"
+   }
+  }
+ },
+ {
+  "nome": "prestação de serviço: mesmo lote em PGW e AMBEV é conflito",
+  "culturas": {
+   "CVA": {
+    "cultura": "Aveia Branca"
+   },
+   "CVT": {
+    "cultura": "Trigo"
+   }
+  },
+  "linhas": [
+   {
+    "aba": "PGW",
+    "linha": 3,
+    "cultivar": "CVA",
+    "cultura_planilha": null,
+    "data": null,
+    "safra": "26/26",
+    "categoria": "S2",
+    "lote": "IG01",
+    "peneira": "S/P",
+    "embalagem": "BB600",
+    "bags": 20,
+    "peso_bag": 600,
+    "total_kg": 12000,
+    "localizacao": "UBS X",
+    "observacoes": null
+   },
+   {
+    "aba": "AMBEV",
+    "linha": 5,
+    "cultivar": "CVA",
+    "cultura_planilha": null,
+    "data": null,
+    "safra": "26/26",
+    "categoria": "S2",
+    "lote": "IG01",
+    "peneira": "S/P",
+    "embalagem": "BB600",
+    "bags": 20,
+    "peso_bag": 600,
+    "total_kg": 12000,
+    "localizacao": "UBS X",
+    "observacoes": null
+   }
+  ],
+  "espera": {
+   "lotIds": [],
+   "conflitos": [
+    "empresa_divergente"
+   ]
+  }
+ },
+ {
+  "nome": "prestação de serviço: mesmo lote na própria e na PGW é conflito",
+  "culturas": {
+   "CVA": {
+    "cultura": "Aveia Branca"
+   },
+   "CVT": {
+    "cultura": "Trigo"
+   }
+  },
+  "linhas": [
+   {
+    "aba": "INVERNO 2026",
+    "linha": 3,
+    "cultivar": "CVA",
+    "cultura_planilha": null,
+    "data": null,
+    "safra": "26/26",
+    "categoria": "S2",
+    "lote": "IG02",
+    "peneira": "S/P",
+    "embalagem": "BB600",
+    "bags": 20,
+    "peso_bag": 600,
+    "total_kg": 12000,
+    "localizacao": "UBS X",
+    "observacoes": null
+   },
+   {
+    "aba": "PGW",
+    "linha": 6,
+    "cultivar": "CVA",
+    "cultura_planilha": null,
+    "data": null,
+    "safra": "26/26",
+    "categoria": "S2",
+    "lote": "IG02",
+    "peneira": "S/P",
+    "embalagem": "BB600",
+    "bags": 20,
+    "peso_bag": 600,
+    "total_kg": 12000,
+    "localizacao": "UBS X",
+    "observacoes": null
+   }
+  ],
+  "espera": {
+   "lotIds": [],
+   "conflitos": [
+    "empresa_divergente"
+   ]
+  }
  }
 ]

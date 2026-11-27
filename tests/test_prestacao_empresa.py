@@ -64,3 +64,52 @@ def test_totais_preservados():
     assert not conflitos
     assert bi.totais(dados)["kg"] == 36000
     assert bi.totais(dados)["bags"] == 60
+
+
+# ------------------------------------------------------------ leitura das abas PGW e AMBEV no Excel
+
+CAB = ["DATA", "CULTIVAR", "SAFRA", "CAT.", "LOTE", "PEN.", "EMBALAGEM", "N° BB", "PESO",
+       "Total", "Localização", "Observações "]
+
+
+def _aba(wb, titulo, cultivar_titulo, linhas, visivel=True):
+    ws = wb.create_sheet(titulo)
+    ws.append([cultivar_titulo]); ws.merge_cells("A1:L1")
+    ws.append(CAB)
+    for cv, lote, bags in linhas:
+        ws.append([None, cv, "26/26", "S2", lote, "S/P", "BB600", bags, 600, bags * 600, "UBS", None])
+    ws.append([None, None, None, None, None, None, "N° BAGS ", sum(b for *_, b in linhas), "FINALIZADO", None, None, None])
+    if not visivel:
+        ws.sheet_state = "hidden"
+
+
+def test_leitura_das_abas_pgw_e_ambev(tmp_path):
+    import openpyxl
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    _aba(wb, "INVERNO 2026", "AVEIA BRANCA - CVPROP", [("CVPROP", "PR01", 20), ("CVPROP", "PR02", 10)])
+    _aba(wb, "PGW", "AVEIA BRANCA - CVPGW", [("CVPGW", "PG01", 15)])
+    _aba(wb, "AMBEV", "CEVADA - CVAMB", [("CVAMB", "AM01", 8), ("CVAMB", "AM02", 4)])
+    _aba(wb, "AMBEV ANTIGA", "CEVADA - CVAMB", [("CVAMB", "OCULTO1", 99)], visivel=False)
+    arq = tmp_path / "benef.xlsx"
+    wb.save(arq)
+
+    linhas, avisos = bi.ler_planilha(arq)
+    assert avisos == []
+    assert sorted({l["aba"] for l in linhas}) == ["AMBEV", "INVERNO 2026", "PGW"]   # aba oculta ignorada
+
+    dados, conflitos, _ = bi.consolidar(linhas)
+    assert not conflitos, conflitos
+    por_empresa = {}
+    for c in dados:
+        for d in c["detail"]:
+            e = d.get("empresa", "PROPRIA")
+            t = por_empresa.setdefault(e, {"lotes": 0, "bags": 0, "kg": 0})
+            t["lotes"] += 1; t["bags"] += d["bags"]; t["kg"] += d["kg"]
+    assert por_empresa == {
+        "PROPRIA": {"lotes": 2, "bags": 30, "kg": 18000},
+        "PGW": {"lotes": 1, "bags": 15, "kg": 9000},
+        "AMBEV": {"lotes": 2, "bags": 12, "kg": 7200},
+    }
+    # o total geral continua sendo a soma das três origens (nada some, nada duplica)
+    assert bi.totais(dados)["kg"] == 18000 + 9000 + 7200

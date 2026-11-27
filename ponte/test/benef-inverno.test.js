@@ -18,6 +18,11 @@ for (const c of CASOS) {
     if (c.espera.kg !== undefined) assert.strictEqual(bi.totais(benef).kg, c.espera.kg);
     if (c.espera.avisos !== undefined) assert.strictEqual(avisos.length, c.espera.avisos);
     if (c.espera.localizacao) assert.strictEqual(benef[0].detail[0].localizacao, c.espera.localizacao);
+    if (c.espera.empresas) {                     // Prestação de Serviço: empresa pela aba
+      const emp = {};
+      for (const x of benef) for (const d of x.detail) emp[d.lotId] = d.empresa === undefined ? null : d.empresa;
+      assert.deepStrictEqual(emp, c.espera.empresas);
+    }
     // identidade única: nunca dois detalhes com o mesmo lotId
     assert.strictEqual(new Set(lotIds).size, lotIds.length);
   });
