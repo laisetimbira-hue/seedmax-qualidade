@@ -261,3 +261,36 @@ def codigos_de_outras_safras(dados, bags=()):
             cods.add(cl.codigo_lote(b["lote"]))
     cods.discard("")
     return cods
+
+
+# ---------------------------------------------------------------- diagnóstico (só log)
+
+MOTIVOS = {
+    "nao_encontrado": "não encontrado no RASTREL (nenhum bag nem pilha do mapa com este lote, safra e cultura)",
+    "homonimo": "lote homônimo ambíguo no mapa — não vinculado",
+    "so_expedido": "todos os bags do RASTREL já expedidos",
+    "sem_posicao": "bags no RASTREL sem localização",
+}
+
+
+def diagnosticar(lotes, benef_inverno):
+    """Lotes do BENEF_INVERNO SEM posição atual e o motivo, para o log do robô.
+    Devolve [(lotId, codigo_do_motivo)] em ordem de lotId. Não traz posições,
+    quantidades nem cultivar (o log do GitHub Actions deste repositório é público)."""
+    out = []
+    for lid in sorted(indexar_benef(benef_inverno)):
+        r = (lotes or {}).get(lid)
+        if r and r.get("posicoes"):
+            continue
+        if not r:
+            m = "nao_encontrado"
+        elif r.get("avisos"):
+            m = "homonimo"
+        elif r.get("semPosicao"):
+            m = "sem_posicao"
+        elif r.get("expedidos"):
+            m = "so_expedido"
+        else:
+            m = "nao_encontrado"
+        out.append((lid, m))
+    return out

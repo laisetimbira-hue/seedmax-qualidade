@@ -182,3 +182,35 @@ def test_publicacao_so_grava_o_conjunto_novo_e_so_quando_muda(tmp_path, monkeypa
     loc = store.ler_conjuntos(store.conectar())[1][lr.CONJUNTO]
     assert loc["fontes"]["mapaFisico"] is False
     assert [p["posicao"] for p in loc["lotes"]["INV2626_TRIGO_26T001"]["posicoes"]] == ["A4B2"]
+
+
+# ---------------------------------------------------------------- diagnóstico
+
+def test_diagnostico_lista_lotes_sem_posicao_e_motivo():
+    nabo = ("N1", "Nabo", "CV N")
+    b = benef(TRIGO, AVEIA, nabo, ("X9", "Cevada", "ABI VALENTE"))
+    lotes = {
+        "INV2626_TRIGO_26T001": {"posicoes": [{"posicao": "A3B12", "bags": 1, "fonte": "tag"}]},
+        "INV2626_AVEIA_BRANCA_26T001": {"posicoes": [], "avisos": ["Mapa: homônimo"]},
+        "INV2626_NABO_N1": {"posicoes": [], "expedidos": 3},
+    }
+    d = lr.diagnosticar(lotes, b)
+    assert d == [("INV2626_AVEIA_BRANCA_26T001", "homonimo"), ("INV2626_CEVADA_X9", "nao_encontrado"),
+                 ("INV2626_NABO_N1", "so_expedido")]
+    assert lr.diagnosticar({"INV2626_NABO_N1": {"posicoes": [], "semPosicao": 2, "expedidos": 1}},
+                           benef(nabo)) == [("INV2626_NABO_N1", "sem_posicao")]
+    assert lr.diagnosticar({}, []) == []
+
+
+def test_log_do_robo_mostra_motivos_sem_posicoes(tmp_path, monkeypatch, capsys):
+    import central_lotes as cl
+    import seedmax_dados as store
+    monkeypatch.setenv("SEEDMAX_DESTINO", f"pasta:{tmp_path}")
+    store.publicar(store.conectar(), {"BENEF_INVERNO": benef(TRIGO, ("P1", "Ervilha", "IAPAR 83"))}, "c0")
+    monkeypatch.setattr(cl, "ler_mapa_fisico", lambda: None)
+    _, dados = store.ler_conjuntos(store.conectar())
+    cl.publicar_localizacao_inverno(dados, [bag("26T001", "Trigo", "A3B12")], simular=True, carimbo="c1")
+    log = capsys.readouterr().out
+    assert "1 lotes sem posição atual" in log and "INV2626_ERVILHA_P1" in log and "não encontrado no RASTREL" in log
+    linhas_motivo = [l for l in log.splitlines() if "INV2626_ERVILHA_P1" in l]
+    assert linhas_motivo and all("A3B12" not in l and "IAPAR" not in l for l in linhas_motivo)

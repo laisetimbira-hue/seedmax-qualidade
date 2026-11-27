@@ -885,6 +885,14 @@ def publicar_localizacao_inverno(dados, bags, simular=False, carimbo=None):
     print(f"Localização RASTREL (Inverno): {n_pos} lotes do Beneficiamento com posição atual · "
           f"{sum(1 for x in lotes.values() if x.get('avisos'))} com aviso · mapa/fisico "
           + ("lido" if fisico is not None else f"NÃO lido ({erro_mapa or 'documento não existe'})"))
+    sem = lr.diagnosticar(lotes, dados.get("BENEF_INVERNO"))
+    if sem:
+        print(f"Localização RASTREL (Inverno): {len(sem)} lotes sem posição atual (a tela usa a planilha):")
+        por_motivo = {}
+        for lid, m in sem:
+            por_motivo.setdefault(m, []).append(lid)
+        for m, lids in por_motivo.items():
+            print(f"  {lr.MOTIVOS[m]}: {len(lids)} — " + ", ".join(lids[:60]) + (" …" if len(lids) > 60 else ""))
     atual = dados.get(lr.CONJUNTO) or {}
     if isinstance(atual, dict) and atual.get("lotes") == lotes and atual.get("fontes") == fontes:
         print(f"{lr.CONJUNTO}: sem mudança")
