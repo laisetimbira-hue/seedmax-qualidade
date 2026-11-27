@@ -2712,10 +2712,17 @@ html {
       <!-- Origem do lote: Produção própria (padrão) × PGW · Prestação de serviço -->
       <div class="invb-visao" role="group" aria-label="Origem dos lotes beneficiados">
         <button type="button" id="invb-visao-propria" aria-pressed="true" onclick="invBenefTrocarVisao('propria')">Produção própria<small id="invb-visao-propria-n"></small></button>
-        <button type="button" id="invb-visao-pgw" aria-pressed="false" onclick="invBenefTrocarVisao('pgw')">PGW · Prestação de serviço<small id="invb-visao-pgw-n"></small></button>
+        <button type="button" id="invb-visao-pgw" aria-pressed="false" onclick="invBenefTrocarVisao('pgw')">Prestação de Serviço<small id="invb-visao-pgw-n"></small></button>
+      </div>
+      <div id="invb-filtro-empresa" style="display:none;margin:0 0 12px;">
+        <label for="invb-empresa" style="font-weight:700;margin-right:8px;">Empresa:</label>
+        <select id="invb-empresa" onchange="filterInvernoBenef()" style="padding:8px 12px;border-radius:8px;">
+          <option value="PGW">PGW</option>
+          <option value="AMBEV">AMBEV</option>
+        </select>
       </div>
       <div id="invb-visao-aviso" class="inv-aviso" style="display:none;margin-bottom:12px;background:#EFF6FF;border-color:#BFDBFE;color:#1E3A8A;">
-        <b>PGW · Prestação de serviço.</b> Lotes de cliente beneficiados pela Sementes com Vigor, identificados pelo vínculo com a aba PGW das análises. Ficam fora dos totais da produção própria.
+        <b>Prestação de Serviço.</b> Lotes de clientes separados por empresa. Não entram nos totais da produção própria.
       </div>
       <!-- Origem a conferir: bloco separado, fora dos dois subtotais -->
       <div id="invb-conferir"></div>
@@ -3026,7 +3033,41 @@ function invOrigemBenef(cultivar, cultura, d) {
   const abasBenef = Array.isArray(d.linhas)
     ? d.linhas.map(x => invNormTxt(x.aba || ''))
     : [];
-  const abaPropria = abasBenef.includes('INVERNO 26-26');
+  // Priorizar a identificação pela própria aba da planilha.
+  const empresaRegistro = invNormTxt(d.empresa || '');
+  const empresaAbas = [...new Set(abasBenef.filter(a =>
+    a === 'PGW' || a === 'AMBEV'
+  ))];
+
+  if (empresaAbas.length > 1 ||
+      (empresaRegistro === 'PGW' || empresaRegistro === 'AMBEV') &&
+      empresaAbas.length && empresaAbas[0] !== empresaRegistro) {
+    return { origem: 'conferir', motivo: 'Empresas divergentes no beneficiamento' };
+  }
+
+  const empresaConfirmada = empresaAbas[0] ||
+    (['PGW', 'AMBEV'].includes(empresaRegistro) ? empresaRegistro : null);
+
+  if (empresaConfirmada) {
+    if (proprio || proprioOutraCultura) {
+      return {
+        origem: 'conferir',
+        motivo: 'Código de lote também encontrado na produção própria'
+      };
+    }
+    if (abasBenef.includes('INVERNO 2026') ||
+        abasBenef.includes('INVERNO 26-26')) {
+      return { origem: 'conferir', motivo: 'Produção própria e prestação de serviço no mesmo lote' };
+    }
+    return {
+      origem: 'pgw',
+      empresa: empresaConfirmada,
+      pgw: empresaConfirmada === 'PGW' && bate.length === 1 ? bate[0] : null
+    };
+  }
+
+  const abaPropria = abasBenef.includes('INVERNO 26-26') ||
+    abasBenef.includes('INVERNO 2026');
   const abaServico = abasBenef.some(x => x.includes('PGW') || x.includes('PRESTA'));
 
   if (abaPropria) {
@@ -3038,7 +3079,7 @@ function invOrigemBenef(cultivar, cultura, d) {
   if (proprio && cand.length) return { origem: 'conferir', motivo: 'Código existe na produção própria e na aba PGW' };
   if (bate.length === 1) {
     if (regPgw === false) return { origem: 'conferir', motivo: 'Origem registrada (' + (d.origem || d.empresa) + ') diferente do vínculo com a PGW' };
-    return { origem: 'pgw', pgw: bate[0] };
+    return { origem: 'pgw', empresa: 'PGW', pgw: bate[0] };
   }
   if (bate.length > 1) return { origem: 'conferir', motivo: 'Lote aparece mais de uma vez na aba PGW' };
   if (cand.length) return { origem: 'conferir', motivo: 'Lote está na aba PGW com ' + (cand[0].cultura ? 'cultura' : 'cultivar') + ' diferente (' + (cand[0].cultura || cand[0].cultivar || '—') + ')' };
@@ -3083,6 +3124,8 @@ function invBenefTrocarVisao(v) {
   invBenefVisao = v;
   ['propria', 'pgw'].forEach(k => document.getElementById('invb-visao-' + k).setAttribute('aria-pressed', String(k === v)));
   document.getElementById('invb-visao-aviso').style.display = v === 'pgw' ? '' : 'none';
+  document.getElementById('invb-filtro-empresa').style.display =
+    v === 'pgw' ? '' : 'none';
   filterInvernoBenef();
 }
 function renderInvBenefConferir(linhas) {
@@ -3134,11 +3177,29 @@ function filterInvernoBenef() {
     return !q || String(x.cultivar || '').toLowerCase().includes(q) || x.cultura.toLowerCase().includes(q) || String(x.d.lote || '').toLowerCase().includes(q);
   };
   const contar = o => { const ls = todas.filter(x => x.origem === o); return { lotes: new Set(ls.map(x => invNormTxt(x.d.lote))).size, kg: ls.reduce((s, x) => s + (x.d.kg || 0), 0) }; };
-  const np = contar('propria'), ng = contar('pgw');
+  const empresaSelecionada =
+    document.getElementById('invb-empresa').value;
+
+  const np = contar('propria');
+  const servicoSelecionado = todas.filter(x =>
+    x.origem === 'pgw' &&
+    (x.empresa || 'PGW') === empresaSelecionada
+  );
+  const ng = {
+    lotes: new Set(servicoSelecionado.map(x =>
+      invNormTxt(x.d.lote))).size,
+    kg: servicoSelecionado.reduce((s, x) =>
+      s + (x.d.kg || 0), 0)
+  };
   document.getElementById('invb-visao-propria-n').textContent = '· ' + np.lotes + ' lotes · ' + invBenefFmtKg(np.kg);
   document.getElementById('invb-visao-pgw-n').textContent = '· ' + ng.lotes + ' lotes · ' + invBenefFmtKg(ng.kg);
   renderInvBenefConferir(todas.filter(x => x.origem === 'conferir' && passa(x)));
-  const daVisao = new Set(todas.filter(x => x.origem === invBenefVisao && passa(x)).map(x => x.d));
+  const daVisao = new Set(todas.filter(x =>
+    x.origem === invBenefVisao &&
+    (invBenefVisao !== 'pgw' ||
+     (x.empresa || 'PGW') === empresaSelecionada) &&
+    passa(x)
+  ).map(x => x.d));
 
   // filtra lote a lote (a busca pode achar um lote específico) e remonta os totais
   const lista = dados.map(c => {
@@ -3161,7 +3222,7 @@ function filterInvernoBenef() {
   const totLotes = lista.reduce((s, c) => s + c.lotes, 0);
   const nCult = new Set(lista.map(c => c.cultura)).size;
   const filtro = (cult || loc || q) ? ' · filtrado' : '';
-  const rotOrigem = invBenefVisao === 'pgw' ? 'PGW · Prestação de serviço' : 'Produção própria';
+  const rotOrigem = invBenefVisao === 'pgw' ? empresaSelecionada + ' · Prestação de serviço' : 'Produção própria';
 
   document.getElementById('inv-benef-count').textContent = lista.length;
   document.getElementById('inv-benef-kpis').innerHTML = `
@@ -3189,7 +3250,7 @@ function filterInvernoBenef() {
   if (!lista.length) {
     document.getElementById('inv-benef-list').innerHTML =
       '<div class="panel" style="text-align:center;padding:32px;color:var(--texto2);">' +
-      (invBenefVisao === 'pgw' && !ng.lotes ? 'Nenhum lote beneficiado vinculado à aba PGW ainda.' : 'Nenhum lote encontrado com os filtros selecionados.') + '</div>';
+      (invBenefVisao === 'pgw' && !ng.lotes ? 'Nenhum lote beneficiado registrado para ' + empresaSelecionada + '.' : 'Nenhum lote encontrado com os filtros selecionados.') + '</div>';
     return;
   }
 

@@ -273,6 +273,26 @@ def consolidar(linhas, culturas=None):
 
     lotes = []
     for lot_id, ls in grupos.items():
+
+        # A empresa vem da aba de origem, sem modificar o Excel.
+        def empresa_da_linha(l):
+            aba = str(l.get("aba") or "").strip().upper()
+            if aba in ("PGW", "AMBEV"):
+                return aba
+            return "PROPRIA"
+
+        empresas = {empresa_da_linha(l) for l in ls}
+        if len(empresas) > 1:
+            conflitos.append({
+                "tipo": "empresa_divergente",
+                "lote": ls[0]["codigo"],
+                "lotId": lot_id,
+                "onde": [_onde(l) for l in ls],
+                "texto": "Mesmo lote em empresas diferentes: "
+                         + ", ".join(sorted(empresas))
+            })
+            continue
+        empresa = next(iter(empresas))
         # (1) linha 100% idêntica repetida = possível duplicação: CONFLITO
         #     (não soma nem ignora — pede conferência da planilha)
         unicas, vistas = [], {}
@@ -325,6 +345,8 @@ def consolidar(linhas, culturas=None):
             "localizacao": juntar("localizacao"), "observacoes": juntar("observacoes"),
             "linhas": [{"aba": l.get("aba"), "linha": l.get("linha")} for l in unicas],
         })
+        if empresa != "PROPRIA":
+            lotes[-1]["empresa"] = empresa
 
     if conflitos:
         return [], conflitos, avisos
