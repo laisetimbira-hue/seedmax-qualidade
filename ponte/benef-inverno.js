@@ -167,6 +167,24 @@ function consolidar(linhas, culturas) {
 
   const lotes = [];
   for (const [lotId, ls] of grupos) {
+
+    // Identifica a empresa pela aba sem modificar o Excel.
+    const empresaDaLinha = l => {
+      const aba = String(l.aba || '').trim().toUpperCase();
+      return ['PGW', 'AMBEV'].includes(aba) ? aba : 'PROPRIA';
+    };
+    const empresas = [...new Set(ls.map(empresaDaLinha))];
+    if (empresas.length > 1) {
+      conflitos.push({
+        tipo: 'empresa_divergente',
+        lote: ls[0].codigo,
+        lotId,
+        onde: ls.map(onde),
+        texto: 'Mesmo lote em empresas diferentes: ' + empresas.sort().join(', ')
+      });
+      continue;
+    }
+    const empresa = empresas[0];
     // linha 100% idêntica repetida = possível lançamento em dobro: CONFLITO
     const unicas = [], vistas = new Map();
     let duplicada = false;
@@ -209,6 +227,9 @@ function consolidar(linhas, culturas) {
       localizacao: juntar('localizacao'), observacoes: juntar('observacoes'),
       linhas: unicas.map(l => ({ aba: l.aba, linha: l.linha }))
     });
+    if (empresa !== 'PROPRIA') {
+      lotes[lotes.length - 1].empresa = empresa;
+    }
   }
   if (conflitos.length) return { benef: [], conflitos, avisos };
 

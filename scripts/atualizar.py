@@ -883,18 +883,28 @@ def _inferir_cultura_inverno(cultivar_raw, idx_cultivar_cultura):
     return None
 
 
+EMPRESAS_SERVICO_INVERNO = ("PGW", "AMBEV")
+
+
 def parse_inverno_pgw(buf, lots_inverno):
     """Lê a aba PGW, sempre separada da produção própria."""
+    return parse_inverno_servico(buf, lots_inverno, "PGW")
+
+
+def parse_inverno_servico(buf, lots_inverno, empresa):
+    """Lê a aba de prestação de serviço de uma empresa (PGW, AMBEV) na
+    planilha de análises. Cada registro leva "empresa"; nada se mistura com a
+    produção própria. Aba ausente → None (quem chama decide preservar)."""
     wb = openpyxl.load_workbook(buf, data_only=True)
-    ws = _achar_aba_inverno(wb, "PGW")
+    ws = _achar_aba_inverno(wb, empresa)
     if ws is None:
-        log("  aviso: aba PGW não encontrada — preservando conjunto atual")
+        log(f"  aviso: aba {empresa} não encontrada — preservando conjunto atual")
         return None
 
     header = [ws.cell(1, c).value for c in range(1, ws.max_column + 1)]
     col_norm = {_norm_aba(h): i + 1 for i, h in enumerate(header) if h}
     if "LOTE" not in col_norm or "CULTIVAR" not in col_norm:
-        raise ValueError("PGW: colunas LOTE e CULTIVAR são obrigatórias")
+        raise ValueError(f"{empresa}: colunas LOTE e CULTIVAR são obrigatórias")
 
     def cell(r, *nomes):
         for nome in nomes:
@@ -912,7 +922,7 @@ def parse_inverno_pgw(buf, lots_inverno):
         if not lote and not cultivar:
             continue
         if not lote or not cultivar:
-            raise ValueError(f"PGW: linha {r} sem lote ou cultivar")
+            raise ValueError(f"{empresa}: linha {r} sem lote ou cultivar")
         data = cell(r, "DATA")
         if hasattr(data, "strftime"):
             data = data.strftime("%d/%m/%Y")
@@ -931,6 +941,7 @@ def parse_inverno_pgw(buf, lots_inverno):
         if kg is None:
             pendencias.append("Peso do lote a confirmar")
         out.append({
+            "empresa": empresa,
             "cultura": cultura,
             "cultivar": str(cultivar).strip(),
             "categoria": str(cell(r, "CATEGORIA")).strip() if cell(r, "CATEGORIA") else None,
@@ -946,8 +957,27 @@ def parse_inverno_pgw(buf, lots_inverno):
             "pendencia": "; ".join(pendencias) if pendencias else None,
             "analises": _extrair_analises_inverno(ws, r, header),
         })
-    log_detalhe(f"  Inverno/PGW: {len(out)} lotes")
+    log_detalhe(f"  Inverno/{empresa}: {len(out)} lotes")
     return out
+
+
+def juntar_servico_inverno(buf, lots_inverno):
+    """LOTS_SERVICO_INVERNO = PGW (obrigatória) + AMBEV (opcional).
+
+    * aba PGW ausente → None: o conjunto publicado fica como está (nada some);
+    * aba AMBEV ausente ou com problema → só a PGW, com aviso no log
+      (a PGW nunca deixa de ser publicada por causa da AMBEV)."""
+    buf.seek(0)
+    pgw = parse_inverno_servico(buf, lots_inverno, "PGW")
+    if pgw is None:
+        return None
+    try:
+        buf.seek(0)
+        ambev = parse_inverno_servico(buf, lots_inverno, "AMBEV")
+    except Exception as e:                      # aba AMBEV fora do padrão: não derruba a PGW
+        log(f"  aviso: aba AMBEV ignorada ({e})")
+        ambev = None
+    return pgw + (ambev or [])
 
 
 def parse_inverno_colheita(buf, lots_inverno):
@@ -1717,7 +1747,7 @@ def main():
             buf_analises_inverno.seek(0)
             comprados_inverno = parse_inverno_comprados(buf_analises_inverno, lots_inverno)
             buf_analises_inverno.seek(0)
-            pgw_inverno = parse_inverno_pgw(buf_analises_inverno, lots_inverno)
+            pgw_inverno = juntar_servico_inverno(buf_analises_inverno, lots_inverno)
 
             cv_meta_atual_inverno = cv_meta_inverno_publicado()
             cv_meta_inverno = montar_cv_meta_inverno(lots_inverno, cv_meta_atual_inverno)

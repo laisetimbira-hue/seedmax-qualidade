@@ -96,6 +96,8 @@ def test_consolidacao_casos(caso):
         assert len(avisos) == esp["avisos"]
     if "localizacao" in esp:
         assert benef[0]["detail"][0]["localizacao"] == esp["localizacao"]
+    if "empresas" in esp:                          # Prestação de Serviço: empresa pela aba
+        assert {d["lotId"]: d.get("empresa") for c in benef for d in c["detail"]} == esp["empresas"]
     assert len(set(lot_ids)) == len(lot_ids)          # nunca dois registros com o mesmo lotId
 
 
