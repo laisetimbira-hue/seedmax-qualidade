@@ -196,3 +196,54 @@ test('estado: devolve só culturas por cultivar e o hash publicado (sem dados de
   assert.deepStrictEqual(Object.keys(r).sort(), ['acao', 'culturas', 'ok', 'publicado']);
   await rejeita(s({ idToken: 'tok-adm', corpo: { acao: 'estado' } }), 403, 'sem_permissao');
 });
+
+// ------------------------------------------------------------ Prestação de Serviço (PGW / AMBEV)
+const LINHAS_EMPRESAS = () => [
+  L('PR01'), L('PR02', { linha: 4, bags: 10, total_kg: 6000 }),
+  L('PG01', { aba: 'PGW', bags: 15, total_kg: 9000 }),
+  L('AM01', { aba: 'AMBEV', cultivar: 'TBIO', bags: 8, total_kg: 4800 })
+];
+
+test('versão nova sobre conjunto publicado pela versão antiga: PGW antiga preservada, AMBEV separada, própria intacta', async () => {
+  // conjunto como a função ANTIGA gravava (sem o campo empresa)
+  const antigo = JSON.parse(JSON.stringify(bi.consolidar(LINHAS_EMPRESAS(), { CVTESTE9: 'Aveia Branca', TBIO: 'Trigo' }).benef));
+  for (const c of antigo) for (const d of c.detail) delete d.empresa;
+  const docs = semear({
+    CV_META_INVERNO: { CVTESTE9: { cultura: 'Aveia Branca', obtentor: null }, TBIO: { cultura: 'Trigo', obtentor: null } },
+    LOTS_INVERNO: [{ lote: 'PR01', cultura: 'Aveia Branca' }], LOTS_SERVICO_INVERNO: [{ lote: 'PG01', cultura: 'Aveia Branca' }],
+    BENEF_INVERNO: antigo
+  });
+  const b = bancoFalso(docs); const s = bi.criarSincronizador(b.deps());
+  const antes = JSON.parse(JSON.stringify(b.docs));
+
+  const r = await s({ idToken: 'tok-sync', corpo: corpo(LINHAS_EMPRESAS()) });
+  assert.strictEqual(r.mudou, true);                                        // só ganhou o campo empresa
+  assert.deepStrictEqual(r.totais, { cultivares: 2, lotes: 4, bags: 53, kg: 31800 });
+
+  // só BENEF_INVERNO e _meta mudam; LOTS_SERVICO_INVERNO (registros da PGW) e demais intactos
+  const mudaram = Object.keys(b.docs).filter(k => JSON.stringify(b.docs[k]) !== JSON.stringify(antes[k])).sort();
+  assert.deepStrictEqual(mudaram, ['BENEF_INVERNO__0', '_meta']);
+
+  const novo = JSON.parse(b.docs.BENEF_INVERNO__0.json);
+  const porLote = d => Object.fromEntries(d.flatMap(c => c.detail).map(x => [x.lote, x]));
+  const velho = porLote(antigo), atual = porLote(novo);
+  assert.deepStrictEqual(Object.keys(atual).sort(), Object.keys(velho).sort());   // nenhum lote some
+  assert.deepStrictEqual(atual.PR01, velho.PR01);                                  // própria: idêntica, sem campo novo
+  assert.deepStrictEqual(atual.PR02, velho.PR02);
+  assert.strictEqual(atual.PG01.empresa, 'PGW');
+  assert.strictEqual(atual.AM01.empresa, 'AMBEV');
+  const { empresa: _e1, ...pg } = atual.PG01; assert.deepStrictEqual(pg, velho.PG01);  // só o campo novo foi acrescentado
+  const { empresa: _e2, ...am } = atual.AM01; assert.deepStrictEqual(am, velho.AM01);
+
+  // reenvio igual: nada muda
+  const r2 = await s({ idToken: 'tok-sync', corpo: corpo(LINHAS_EMPRESAS()) });
+  assert.strictEqual(r2.mudou, false);
+});
+
+test('mesmo lote na PGW e na AMBEV: conflito e nada é gravado', async () => {
+  const b = bancoFalso(BASE()); const s = bi.criarSincronizador(b.deps()); const antes = JSON.stringify(b.docs);
+  await rejeita(s({ idToken: 'tok-sync', corpo: corpo([L('IG01', { aba: 'PGW' }), L('IG01', { aba: 'AMBEV', linha: 9 })]) }), 409, 'conflito');
+  assert.strictEqual(JSON.stringify(b.docs), antes);
+  assert.strictEqual(b.registros.at(-1).resultado, 'CONFLITO');
+  assert.strictEqual(b.registros.at(-1).conflitos[0].tipo, 'empresa_divergente');
+});
