@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - index.html
+      - tsi/index.html
+      - rastrel/index.html
       - portal-home.html
       - icon.png
       - manifest.webmanifest
@@ -54,7 +56,6 @@ jobs:
             portal/sessao-home.js
             portal/sessao-home.js.bak
             portal/shell-modulos.js
-            tsi/index.html
           )
           for arquivo in "${ARQUIVOS[@]}"; do
             mkdir -p ".hosting-public/$(dirname "$arquivo")"
@@ -64,6 +65,8 @@ jobs:
             test -s ".hosting-public/$arquivo" || { echo "ERRO: $arquivo vazio"; exit 1; }
             echo "Preservado: $arquivo"
           done
+          mkdir -p .hosting-public/tsi
+          cp tsi/index.html .hosting-public/tsi/index.html
           mkdir -p .hosting-public/rastrel
           cp rastrel/index.html .hosting-public/rastrel/index.html
           [ "$(find .hosting-public -type f | wc -l)" -eq 16 ] || exit 1
