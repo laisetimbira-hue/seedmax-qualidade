@@ -137,4 +137,9 @@ app.seedmax.com.br › Inverno › Beneficiamento (somente leitura)
 * **Sem o conjunto** (robô ainda não rodou, RASTREL desligado com
   `CENTRAL_RASTREL`, `mapa/fisico` ilegível) a tela continua igual, com a
   planilha. Falha nessa etapa não interrompe a sincronização da Central.
+* **Diagnóstico no log:** cada execução da Central lista os lotes do Beneficiamento
+  sem posição atual e o motivo (`não encontrado no RASTREL`, `lote homônimo ambíguo`,
+  `todos os bags já expedidos`, `bags sem localização`). O log do GitHub Actions deste
+  repositório é público: ele mostra só o `lotId` e o motivo, sem posições, quantidades
+  nem cultivar.
 * Testes: `tests/test_localizacao_rastrel.py` e `tests/tela-local-rastrel.test.mjs`.
